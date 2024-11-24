@@ -1,0 +1,81 @@
+{
+  "_comment-1": "https://json-schema.org/learn/getting-started-step-by-step",
+  "_comment-2": "The word 'record' and the word 'entry' are being used interchangeably, may need to pick just one",
+  "_comment-3": "Things to standardize: finances, (fiscal) year represented, date record added to registry, people, physical address, contact info, alternative URLs, ... check original MongoDB, legal notices (see New Zealand)",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Registry Entry",
+  "description": "An entry describing an entity in a registry.",
+  "type": "object",
+  "properties": {
+    "entityName": {
+      "type": "string",
+      "description": "Listed name of the organization"
+    },
+    "entityId": {
+      "type": "string",
+      "description": "The public id of the organization in the registry entry. These values may be unique, but unlike `entityIndex` are not necessarily unique (see `subsidiaryId`)."
+    },
+    "subsidiaryId": {
+      "type": "string",
+      "description": "Identification of an organization nested within another organization. It is assumed that `entityId` + `subsidiaryId` form unique value pairs for each record."
+    },
+    "associatedEntityIds": {
+      "type": "list",
+      "description": "A list of associated organizations using their registry id.",
+      "unit": "associatedEntityId"
+    },
+    "entityIndex": {
+      "type": "string",
+      "description": "The internal index of the organization in the registry entry. It is assumed that these values are unique."
+    },
+    "recordId": {
+      "type": "string",
+      "description": "The id of the record in the registry entry. If there are multiple records for different years, this id should be different for each record.",
+      "uniqueItems": true,
+      "delete": "yes"
+    },
+    "recordIndex": {
+      "type": "string",
+      "description": "The internal index of the record in the registry entry. This is used when there already is a `recordId` that represents a broader public identification but there also is an identification system internal to the registry.",
+      "uniqueItems": true,
+      "delete": "yes"
+    },
+    "websiteUrl": {
+      "type": "string",
+      "format": "url",
+      "description": "The official url of the organization as listed in the registry entry."
+    },
+    "registryName": {
+      "type": "string",
+      "description": "The name of the registry where the entry was retrieved from."
+    },
+    "sourceData": {
+      "type": "object",
+      "description": "A representation of the original data in the context of the original source.",
+      "properties": {
+        "dateAccessed": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The date the source was accessed. If the source is a copy, this is the date the local file was copied from the authoritative source."
+        },
+        "sourceUrl": {
+          "type": "string",
+          "format": "url",
+          "description": "The original source URL if applicable. (Maybe this should generalize to include file name?)"
+        },
+        "retrivalMethod": {
+          "type": "string",
+          "description": "The tool used (i.e. Jupyter Notebook name) used to extract data from the source."
+        },
+        "rawData": {
+          "type": "object",
+          "description": "A representation of the original data."
+        }
+      }
+    }
+  },
+  "required": [
+    "entityName",
+    "sourceData"
+  ]
+}

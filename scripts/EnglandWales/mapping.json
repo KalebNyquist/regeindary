@@ -1,0 +1,42 @@
+[
+  {
+    "origin": "charity_name",
+    "target": "entityName"
+  },
+  {
+    "origin": "charity_contact_web",
+    "target": "websiteUrl"
+  },
+  {
+    "origin": "registered_charity_number",
+    "target": "entityId"
+  },
+  {
+    "origin": "organisation_number",
+    "target": "entityIndex"
+  },
+  {
+    "origin": "linked_charity_number",
+    "target": "subsidiaryIndex"
+  },
+  {
+    "origin": "fin_period_start_date",
+    "target": "startDate"
+  },
+  {
+    "origin": "fin_period_end_date",
+    "target": "endDate"
+  },
+  {
+    "origin": "date_annual_return_received",
+    "target": "recordDate"
+  },
+  {
+    "origin": "total_gross_income",
+    "target": "totalIncome"
+  },
+  {
+    "origin": "total_gross_expenditure",
+    "target": "totalExpenditures"
+  }
+]

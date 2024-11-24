@@ -1,0 +1,14 @@
+[
+  {
+    "origin": "Charity_Legal_Name",
+    "target": "entityName"
+  },
+  {
+    "origin": "Charity_Website",
+    "target": "websiteUrl"
+  },
+  {
+    "origin": "ABN",
+    "target": "entityId"
+  }
+]

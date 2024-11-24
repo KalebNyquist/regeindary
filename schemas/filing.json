@@ -1,0 +1,65 @@
+{
+  "_comment-1": "https://json-schema.org/learn/getting-started-step-by-step",
+  "_comment-2": "This may need to be merged into the filing schema.json, or that file renamed into schema-entities.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Registry Entry",
+  "description": "An entry describing an entity in a registry.",
+  "type": "object",
+  "properties": {
+    "startDate": {
+      "type": "date",
+      "description": "Start date of time period described by filing"
+    },
+    "endDate": {
+      "type": "date",
+      "description": "End date of time period described by filing"
+    },
+    "recordDate": {
+      "type": "date",
+      "description": "Specific date that the filing was received by registry authority"
+    },
+    "totalIncome": {
+      "type": "number",
+      "description": "Total income of the entity during the time period described by filing"
+    },
+    "totalExpenditures": {
+      "type": "number",
+      "description": "Total expenditures of the entity during the time period described by filing"
+    },
+    "filingId": {
+      "type": "string",
+      "description": "The public id of the filing in the registry.",
+      "uniqueItems": true
+    },
+    "filingIndex": {
+      "type": "string",
+      "description": "The internal index of the filing in the registry. This is used when there already is a `filingId` that represents a broader public identification but there also is an identification system internal to the registry. ...Perhaps if this is a number instead of a string, that implies an enumerated index??",
+      "uniqueItems": true
+    },
+    "sourceData": {
+      "type": "object",
+      "description": "A representation of the original data in the context of the original source.",
+      "properties": {
+        "dateAccessed": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The date the source was accessed. If the source is a copy, this is the date the local file was copied from the authoritative source."
+        },
+        "sourceUrl": {
+          "type": "string",
+          "format": "url",
+          "description": "The original source URL if applicable. (Maybe this should generalize to include file name?)"
+        },
+        "retrivalMethod": {
+          "type": "string",
+          "description": "The tool used (i.e. Jupyter Notebook name) used to extract data from the source."
+        },
+        "rawData": {
+          "type": "object",
+          "description": "A representation of the original data."
+        }
+      }
+    }
+  },
+  "required": []
+}

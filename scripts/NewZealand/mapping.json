@@ -1,0 +1,18 @@
+[
+  {
+    "origin": "Name",
+    "target": "entityName"
+  },
+  {
+    "origin": "WebsiteUrl",
+    "target": "websiteUrl"
+  },
+  {
+    "origin": "CharityRegistrationNumber",
+    "target": "entityId"
+  },
+  {
+    "origin": "OrganisationId",
+    "target": "entityIndex"
+  }
+]

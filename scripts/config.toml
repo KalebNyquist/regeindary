@@ -1,0 +1,5 @@
+mongo_path = "mongodb://127.0.0.1:27017/"
+database_name = "regeindary"
+organization_collection = "organizations"
+filings_collection = "filings"
+meta_collection = "registries"
