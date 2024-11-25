@@ -49,6 +49,16 @@
       "type": "string",
       "description": "The name of the registry where the entry was retrieved from."
     },
+    "establishedDate" : {
+      "type" : "string",
+      "format" : "date",
+      "description": "Date the organization was established (ie. in reality, so this may be different than `registeredDate`.)"
+    },
+    "registeredDate" : {
+      "type" : "string",
+      "format" : "date",
+      "description": "Date the organization was entered into the registry (compare to `establishedDate`.)"
+    },
     "sourceData": {
       "type": "object",
       "description": "A representation of the original data in the context of the original source.",

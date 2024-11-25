@@ -1,16 +1,13 @@
 import sys
 import os
 import utils
-from pprint import pp
 
 # Add the project root directory to sys.path if it's not already there
-# This allows for same functionality in Anaconda Powershell as in Pycharm
 project_root = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(project_root)
 if parent_dir not in sys.path:
     print("Adding root")
     sys.path.append(parent_dir)
-pp(sys.path)
 
 
 def retrieve_registries():
@@ -72,7 +69,7 @@ def menu_select():
         elif selection == "4":
             utils.run_all_match_filings()
         elif selection == "5":
-            utils.print_random_entity()
+            utils.get_random_entity(display="No Original")
         elif selection == "H":
             print("Hello world!")
         elif selection.lower() == "x":

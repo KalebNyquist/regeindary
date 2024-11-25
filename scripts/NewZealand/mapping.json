@@ -4,7 +4,7 @@
     "target": "entityName"
   },
   {
-    "origin": "WebsiteUrl",
+    "origin": "WebSiteURL",
     "target": "websiteUrl"
   },
   {
@@ -14,5 +14,10 @@
   {
     "origin": "OrganisationId",
     "target": "entityIndex"
+  },
+  {
+    "origin": "DateRegistered",
+    "target": "registeredDate",
+    "format": "DD/MM/YYYY"
   }
 ]

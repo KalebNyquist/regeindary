@@ -7,15 +7,18 @@
   "type": "object",
   "properties": {
     "startDate": {
-      "type": "date",
+      "type": "string",
+      "format" : "date",
       "description": "Start date of time period described by filing"
     },
     "endDate": {
-      "type": "date",
+      "type" : "string",
+      "format": "date",
       "description": "End date of time period described by filing"
     },
     "recordDate": {
-      "type": "date",
+      "type" : "string",
+      "format": "date",
       "description": "Specific date that the filing was received by registry authority"
     },
     "totalIncome": {

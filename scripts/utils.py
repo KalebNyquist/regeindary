@@ -9,13 +9,12 @@ import sys
 
 
 # Add the project root directory to sys.path if it's not already there
-# This allows for same functionality in Anaconda Powershell as in Pycharm
 project_root = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(project_root)
 if parent_dir not in sys.path:
     print("Adding root")
     sys.path.append(parent_dir)
-pp(sys.path)
+
 
 # Prerequisite Functions to Create Globals
 def get_config():
@@ -127,7 +126,6 @@ def send_to_mongodb(record, mapping, static, collection):
 def meta_check(registry_name, source_url, collection="organizations"):
     """Checks to see if the registry is listed in the database. If it does not exist, it creates a listing and
     returns the id of the listing. If it does exist, it finds the listing and returns the id."""
-    # meta = collections_map['registries'] - [ ] queued for deletion
     preexisting_registries = mongo_regeindary[meta].count_documents({"name": registry_name})
 
     if preexisting_registries == 0:
@@ -157,7 +155,6 @@ def retrieve_mapping(folder=""):
 
 def list_registries():
     mongo_registries = mongo_regeindary[meta].find({})
-    # registries_dict = [{"id" : x['_id'], "name": x['name']} for x in mongo_registries]
     mongo_registries = [mongo_registry for mongo_registry in mongo_registries]
     return mongo_registries
 
@@ -225,11 +222,9 @@ def keyword_match_assist(select=None):
         print(options[select]["name"], "preselected")
 
     # MAIN FUNCTION
-
     directory = directory_map[options[select]["name"]]
 
     with open(f"{directory}/mapping.json", "r") as m:
-    # with open(f"scripts/{directory}/mapping.json", "r") as m:
         mapping = json.load(m)
     with open("../schemas/entity.json", "r") as s:
         schema = json.load(s)
@@ -239,12 +234,12 @@ def keyword_match_assist(select=None):
     missing = set.difference(set(schema['properties'].keys()), set([x['target'] for x in mapping]))
     print("Schema fields not accounted for:", ", ".join(missing))
 
-    # - [ ] remove thor
-    thor = mongo_regeindary[orgs].find_one({"registryID": options[select]['id']}, skip=100)
+    random_entity = get_random_entity(mongo_filter={"registryID": options[select]['id']})
+
     origin_to_target = {x['origin']: x['target'] for x in mapping}
 
-    longest_key_length = max(len(x) for x in thor['Original Data'].keys())
-    for x, y in thor['Original Data'].items():
+    longest_key_length = max(len(x) for x in random_entity['Original Data'].keys())
+    for x, y in random_entity['Original Data'].items():
 
         print(x.ljust(longest_key_length + 2), end="")
 
@@ -252,9 +247,6 @@ def keyword_match_assist(select=None):
             print("✅".ljust(10), end="")
         else:
             print("⬜".ljust(10), end="")
-
-        # if target_to_origin.get(x, False):
-        #     print(", x)
 
         print(y)
 
@@ -340,13 +332,19 @@ def completion_timestamp(meta_id, completion_type="download"):
     return result
 
 
-def print_random_entity():
-    limit = mongo_regeindary.organizations.count_documents({}) + 1
+def get_random_entity(display=False, mongo_filter=None):
+    if mongo_filter is None:
+        mongo_filter = {}
+    limit = mongo_regeindary.organizations.count_documents(mongo_filter) + 1
     random_select = random.randrange(0, limit)
-    print("Entity", random_select, "of", limit)
-    random_entity = mongo_regeindary.organizations.find_one({}, skip=random_select)
-    del random_entity['Original Data']
-    (pp(random_entity))
+    if display:
+        print("Entity", random_select, "of", limit)
+    random_entity = mongo_regeindary.organizations.find_one(mongo_filter, skip=random_select)
+    if display:
+        if display == "No Original":
+            del random_entity['Original Data']
+        (pp(random_entity))
+    return random_entity
 
 
 if __name__ == '__main__':
