@@ -1,15 +1,15 @@
 # Regeindary
 
-"Regeindary" is a loose portmanteau of the words "**reg**istr**y**" and "sta**ndar**d" that also evokes the terms "
-legendary", "repository", and "EIN" (as
-in ["Employer Identification Number"](https://en.wikipedia.org/wiki/Employer_Identification_Number)).
-
 ## Description
 
 The Regeindary tool is a means of importing publicly-available data from heterogeneous civil society and other organizational registries 
 (for example, United States nonprofit records, the England and Wales charity register, United Nations recognized NGOs and
 the B Corps directory) and putting them in a standardized form that is queryable in a MongoDB database. An "entity" (i.e. "organization")
 may be linked to multiple "filings" (i.e. a 990 tax return or another form of "annual report").
+
+*A note on naming: "Regeindary" is a loose portmanteau of the words "**reg**istr**y**" and "sta**ndar**d" that also evokes the terms 
+"legendary", "repository", and "EIN" (as in ["Employer Identification Number"](https://en.wikipedia.org/wiki/Employer_Identification_Number)).*
+
 
 ## Progress and Roadmap
 
@@ -49,17 +49,13 @@ Each registry that already is or is planned to be a part of the Regeindary tool 
 * Select option `[2] Retrieve Registries` and select `[A] Run All` (you may be asked to select more)
 * After completion, select `[4] Match Filings with Entities`
 
-## Help
-
-Placeholder
-
 ## Structure
 
 Placeholder
 
 ## Authors
 
-Kaleb Nyquist (Twitter, LinkedIn, Website)
+Kaleb Nyquist ([LinkedIn](https://www.linkedin.com/in/kalebnyquist/), [GitHub](https://github.com/KalebNyquist), [Twitter](https://x.com/KalebNyquist), Website)
 
 ## Version History
 
