@@ -51,7 +51,7 @@ Each registry that already is or is planned to be a part of the Regeindary tool 
 
 ## Structure
 
-* The `/schemas' folder contains [JSON Schema](https://json-schema.org) files that define how entities and filings for those entities are to be organized.
+* The `/schemas` folder contains [JSON Schema](https://json-schema.org) files that define how entities and filings for those entities are to be organized.
 * The `/scripts` folder contains the Python code that operates Regeindary. Each subdirectory contains customized code for a specific registry, and a `mapping.json` file provides guidance on how to match fields and values from the original data into the aggregated target database.
 
 ## Authors
