@@ -33,7 +33,7 @@ Each registry that already is or is planned to be a part of the Regeindary tool 
 
 ### Dependencies
 
-* [Python](https://www.python.org) (developing/testing 3.12.4)
+* [Python](https://www.python.org) (developing/testing on 3.12.4)
 * [MongoDB](https://docs.mongodb.com/manual/installation/) (developing/testing on 8.0.0)
     * Recommended: [MongoDB Compass](https://www.mongodb.com/products/tools/compass)
       or [Studio 3T for MongoDB](https://studio3t.com) for graphically navigating the final product
@@ -51,7 +51,8 @@ Each registry that already is or is planned to be a part of the Regeindary tool 
 
 ## Structure
 
-Placeholder
+* The `/schemas' folder contains [JSON Schema](https://json-schema.org) files that define how entities and filings for those entities are to be organized.
+* The `/scripts` folder contains the Python code that operates Regeindary. Each subdirectory contains customized code for a specific registry, and a `mapping.json` file provides guidance on how to match fields and values from the original data into the aggregated target database.
 
 ## Authors
 
