@@ -24,7 +24,7 @@ Each registry that already is or is planned to be a part of the Regeindary tool 
 - [ ] Northern Ireland
 - [ ] Norway
 - [ ] United Nations Registered NGOs
-- [ ] [United States](https://github.com/KalebNyquist/regeindary/tree/master/scripts/UnitedStates)
+- [X] [United States](https://github.com/KalebNyquist/regeindary/tree/master/scripts/UnitedStates)
   - [ ] Higher Education Institutions
   - [ ] IRS Registered Nonprofits
 
