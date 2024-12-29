@@ -1,0 +1,47 @@
+[
+  {
+    "origin" : "EIN",
+    "target" : "entityId"
+  },
+  {
+    "origin" : "NAME",
+    "target" : "entityName"
+  },
+  {
+    "origin" : "ObjectId",
+    "target" : "filingId"
+  },
+  {
+    "origin": "OrganizationName",
+    "target": "entityName"
+  },
+  {
+    "origin": "SubmittedOn",
+    "target": "recordDate"
+  },
+  {
+    "origin": "TaxPeriodBeginDate",
+    "target": "startDate"
+  },
+  {
+    "origin": "TaxPeriodEndDate",
+    "target": "endDate"
+  },
+  {
+    "origin": "TotalExpensesCY",
+    "target": "totalExpenditures"
+  },
+  {
+    "origin": "TotalRevenueCY",
+    "target": "totalIncome"
+  },
+  {
+    "origin": "Website",
+    "target": "websiteUrl"
+  },
+  {
+    "origin": "YearFormed",
+    "target": "establishedDate",
+    "format" : "YYYY"
+  }
+]

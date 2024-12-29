@@ -38,10 +38,6 @@ def retrieve_data(folder, label):
     with open(f"{folder}cache_{label}.json", encoding="utf-8-sig") as js:
         response_dicts = json.load(js)
 
-    # print(" 🔖 CURRENT PROGRESS")
-    # pprint.pp(response_dicts[0])
-    # print(type(response_dicts), type(response_dicts[0]))
-
     return response_dicts
 
 

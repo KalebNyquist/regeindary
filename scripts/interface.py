@@ -14,13 +14,14 @@ def retrieve_registries():
     retrieval_options = """[1] Australia
 [2] England and Wales
 [3] New Zealand
+[4] United States
 [A] Run All
 [X] Exit"""
 
     print(retrieval_options)
 
     selection = input("Choose option(s), comma separate if multiple: ")
-    all_options = [str(x) for x in range(1, 4)]
+    all_options = [str(x) for x in range(1, 5)] # - [ ] make sure this updates when adding a country
     if selection == "A":
         selection = all_options
         print("Running all options:", selection)
@@ -43,6 +44,10 @@ def retrieve_registries():
         elif s == "3":
             import scripts.NewZealand.retrieve as newzee
             newzee.run_everything("NewZealand/")
+        elif s == "4":
+            import scripts.UnitedStates.retrieve as ustates
+            ustates.run_everything("United States/")
+
 
     print("✔ All Selected Registries Retrieved")
 
@@ -69,7 +74,7 @@ def menu_select():
         elif selection == "4":
             utils.run_all_match_filings()
         elif selection == "5":
-            utils.get_random_entity(display="No Original")
+            utils.get_random_entity(display="No Original", hard_limit=5000)
         elif selection == "H":
             print("Hello world!")
         elif selection.lower() == "x":

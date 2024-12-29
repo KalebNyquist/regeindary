@@ -1,3 +1,4 @@
+import inspect
 import tomllib
 import os
 import pymongo
@@ -100,10 +101,12 @@ def delete_old_records(registry_id, collection='organizations'):
 
 
 def send_all_to_mongodb(records, mapping, static, collection='organizations'):
+    # - [ ] for performance, is there a way to rewrite this as "insert_many" rather than "insert_one"?
     results = {}
     for i, record in enumerate(records, start=1):
         if (i % 100 == 0) or (i == len(records)):
-            print(f"\r {i}/{len(records)} records processed", end="")
+            percentage = "%.2f" % (100 * i/len(records))
+            print(f"\r {i}/{len(records)} ({percentage}%) records processed", end="")
         result = send_to_mongodb(record, mapping, static, collection)
         results.update({i: result})
 
@@ -162,14 +165,20 @@ def list_registries():
 def status_check():
     global mongo_regeindary, collections_map
 
-    n_registries = mongo_regeindary[meta].count_documents({})
-    n_organizations = mongo_regeindary[orgs].count_documents({})
-    n_filings = mongo_regeindary[filings].count_documents({})
+    print("Status Check Beginning")
+    print("  Counting # Registries...", end="")
+    n_registries = mongo_regeindary[meta].count_documents({}, hint="_id_")
+    print(" ✔\n  Counting # Organizations...", end="")
+    n_organizations = mongo_regeindary[orgs].count_documents({}, hint="_id_")
+    print(" ✔\n  Counting # Filings...", end="")
+    n_filings = mongo_regeindary[filings].count_documents({},  hint="_id_")
+    print(" ✔")
 
     registries = list_registries()
 
     print(n_registries, "registries,", n_organizations, "organizations, and", n_filings, "filings")
     for registry in registries:
+        # - [ ] consider replacing with a pipeline
         print(registry['name'].ljust(80, "."), end="")
 
         completion_time = registry.get("download_completion", False)
@@ -196,7 +205,8 @@ def keyword_match_assist(select=None):
     directory_map = {
         "New Zealand - The Charities Register/Te Rēhita Kaupapa Atawhai": "NewZealand",
         "Australia - ACNC Charity Register": "Australia",
-        "England and Wales - Charity Commission Register of Charities": "EnglandWales"
+        "England and Wales - Charity Commission Register of Charities": "EnglandWales",
+        "United States - Internal Revenue Service - Exempt Organizations Business Master File Extract": "UnitedStates"
     }
 
     mongo_registries = mongo_regeindary[meta].find({})
@@ -257,24 +267,62 @@ def index_check(collection, identifiers):
     return result
 
 
-def match_filing(filing):
-    entity_id = filing['entityIndex']  # - [ ] make decision about Index versus Id, see UK/Wales situation especially
+def create_organization_from_orphan_filing(filing):
+
+    fields_to_clone = [
+        'registryName',
+        'registryId',
+        'entityId',
+        'entityName',
+        'establishedDate',
+        'websiteUrl'  # this is questionable, given how US Filings have Websites but Orgs do not
+    ]
+
+    org_dict = {k: v for k, v in filing.items() if k in fields_to_clone}
+
+    # Generate Function Breadcrumb
+    file_name = inspect.getfile(inspect.currentframe())
+    function_name = inspect.currentframe().f_code.co_name
+    breadcrumb = f"{file_name} {function_name}()"
+
+    original_data = {
+        "Generating Function": breadcrumb,
+        "Source Filing": filing['_id']
+    }
+
+    org_dict.update({"Original Data": original_data})
+    result = mongo_regeindary['organizations'].insert_one(org_dict)
+    return result.inserted_id
+
+
+def match_filing(filing, matching_field='entityId', auto_create_from_orphan=True):
+    # - [ ] note UK/Wales works better when matching_field='entityIndex'
+    entity_id = filing[matching_field]
     registry_id = filing['registryID']  # - [ ] registryID -> registryId
-    org_identifier = {"registryID": registry_id, "entityIndex": entity_id}
+
+    # org_identifier = {"registryID": registry_id, matching_field: entity_id}
+    # the below line of code fixes an import error with USA Data, the above line of code is ideal if import error fixed
+    org_identifier = {"registryID": registry_id, matching_field: str(entity_id).rjust(9, '0')}
 
     matched_orgs = mongo_regeindary[orgs].find(org_identifier)
     matched_orgs = [matched_org for matched_org in matched_orgs]
 
     if len(matched_orgs) == 0:
-        raise Exception
+        if auto_create_from_orphan:
+            entity_id_mongo = create_organization_from_orphan_filing(filing)
+        else:
+            print("⚠️ No matching organization found for filing (see below).")
+            pp(filing)
+            manual_decision = input("Create Organization from Orphan Filing? (y/n) ")
+            if manual_decision == "y":
+                entity_id_mongo = create_organization_from_orphan_filing(filing)
+            else:
+                raise Exception("No matching orgs found")
     elif len(matched_orgs) >= 2:
         raise Exception
     elif len(matched_orgs) == 1:
-        pass
-
-    [matched_org] = matched_orgs
-
-    entity_id_mongo = matched_org['_id']
+        [matched_org] = matched_orgs
+        entity_id_mongo = matched_org['_id']
 
     result = mongo_regeindary[filings].update_one(
         {"_id": filing['_id']},
@@ -283,20 +331,39 @@ def match_filing(filing):
     return result
 
 
-def run_all_match_filings():
+def run_all_match_filings(batch_size=False):
+
+    # - [ ] Turn into a Loop
+    print("Checking for Index #1 - ", datetime.now())  # - [ ] this one can be deleted if UK/Wales resolved
     index_check(mongo_regeindary[orgs], ['registryID', 'entityIndex'])
+    print("Checking for Index #2 - ", datetime.now())
+    index_check(mongo_regeindary[filings], ['entityId_mongo'])
+    print("Checking for Index #3 - ", datetime.now())
+    index_check(mongo_regeindary[orgs], ['registryID', 'entityId'])
 
     unmatched_identifier = {"entityId_mongo": {"$exists": False}}
     matched_identifier = {"entityId_mongo": {"$exists": True}}
 
-    n_unmatched = mongo_regeindary[filings].count_documents(unmatched_identifier)
-    n_matched = mongo_regeindary[filings].count_documents(matched_identifier)
+    if batch_size:
+        print(f"Beginning a batch of {batch_size} filings at", datetime.now())
+        n_unmatched = batch_size
+    else:
+        print("Counting All Filings - ", datetime.now())
+        n_total = mongo_regeindary[filings].count_documents(filter={}, hint="_id_")
+        print(n_total, "existing as of", datetime.now())
 
-    print(n_matched, "matched")
-    print(n_unmatched, "unmatched at", datetime.now())
+        print("Counting Matched Filings - ", datetime.now())
+        n_matched = mongo_regeindary[filings].count_documents(matched_identifier)
+        print(n_matched, "matched as of", datetime.now())
+
+        print("Calculating Unmatched Filings - ", datetime.now())
+        n_unmatched = n_total - n_matched
+        print(n_unmatched, "matched as of", datetime.now())
+
+        reference_unmatched = n_unmatched
 
     reference_time = datetime.now()
-    reference_unmatched = n_unmatched
+
     try:
         while n_unmatched > 0:
             print(f"\r{n_unmatched} unmatched at {datetime.now()}".ljust(50), end="")
@@ -304,19 +371,22 @@ def run_all_match_filings():
             match_filing(filing)
             n_unmatched -= 1
 
-            time_difference = datetime.now() - reference_time
-            interval_minutes = 5
-            if time_difference.total_seconds() > (interval_minutes * 60):
-                unmatched_difference = reference_unmatched - n_unmatched
-                print(f"• {interval_minutes} minutes have passed and {unmatched_difference} matches have been made")
-                reference_time = datetime.now()
-                reference_unmatched = n_unmatched
+            # Show progress over time
+            if batch_size is False:
+                # - [ ] This fails if batch_size exists, because `reference_unmatched` does not get declared
+                time_difference = datetime.now() - reference_time
+                interval_minutes = 5
+                if time_difference.total_seconds() > (interval_minutes * 60):
+                    unmatched_difference = reference_unmatched - n_unmatched
+                    print(f"• {interval_minutes} minutes have passed and {unmatched_difference} matches have been made")
+                    reference_time = datetime.now()
+                    reference_unmatched = n_unmatched
 
+        print(f"\r{n_unmatched} unmatched at {datetime.now()}".ljust(50))
         print("✔ Complete!")
 
     except KeyboardInterrupt:
-        n_matched = mongo_regeindary[filings].count_documents(matched_identifier)
-        print(f"\n{n_matched} matched")
+        print("Matching Process Stopped")
 
 
 def completion_timestamp(meta_id, completion_type="download"):
@@ -332,10 +402,17 @@ def completion_timestamp(meta_id, completion_type="download"):
     return result
 
 
-def get_random_entity(display=False, mongo_filter=None):
+def get_random_entity(display=False, mongo_filter=None, hard_limit=False):
+    print("Retrieving random entry")
     if mongo_filter is None:
         mongo_filter = {}
-    limit = mongo_regeindary.organizations.count_documents(mongo_filter) + 1
+        hint = "_id_"
+    else:
+        hint = None
+    limit = mongo_regeindary.organizations.count_documents(mongo_filter, hint=hint) + 1
+    if hard_limit:
+        if limit > hard_limit:
+            limit = hard_limit
     random_select = random.randrange(0, limit)
     if display:
         print("Entity", random_select, "of", limit)
@@ -348,4 +425,4 @@ def get_random_entity(display=False, mongo_filter=None):
 
 
 if __name__ == '__main__':
-    pass
+    run_all_match_filings(50)
