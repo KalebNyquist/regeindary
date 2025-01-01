@@ -334,18 +334,18 @@ def match_filing(filing, matching_field='entityId', auto_create_from_orphan=True
 def run_all_match_filings(batch_size=False):
 
     # - [ ] Turn into a Loop
-    print("Checking for Index #1 - ", datetime.now())  # - [ ] this one can be deleted if UK/Wales resolved
+    print("Checking for Index #1 -", datetime.now())  # - [ ] this one can be deleted if UK/Wales resolved
     index_check(mongo_regeindary[orgs], ['registryID', 'entityIndex'])
-    print("Checking for Index #2 - ", datetime.now())
+    print("Checking for Index #2 -", datetime.now())
     index_check(mongo_regeindary[filings], ['entityId_mongo'])
-    print("Checking for Index #3 - ", datetime.now())
+    print("Checking for Index #3 -", datetime.now())
     index_check(mongo_regeindary[orgs], ['registryID', 'entityId'])
 
     unmatched_identifier = {"entityId_mongo": {"$exists": False}}
     matched_identifier = {"entityId_mongo": {"$exists": True}}
 
     if batch_size:
-        print(f"Beginning a batch of {batch_size} filings at", datetime.now())
+        print(f"Beginning a batch of {batch_size:,} filings at", datetime.now())
         n_unmatched = batch_size
     else:
         print("Counting All Filings - ", datetime.now())
@@ -366,7 +366,7 @@ def run_all_match_filings(batch_size=False):
 
     try:
         while n_unmatched > 0:
-            print(f"\r{n_unmatched} unmatched at {datetime.now()}".ljust(50), end="")
+            print(f"\r{n_unmatched:,} unmatched at {datetime.now()}".ljust(50), end="")
             filing = mongo_regeindary[filings].find_one(unmatched_identifier)
             match_filing(filing)
             n_unmatched -= 1
@@ -382,7 +382,7 @@ def run_all_match_filings(batch_size=False):
                     reference_time = datetime.now()
                     reference_unmatched = n_unmatched
 
-        print(f"\r{n_unmatched} unmatched at {datetime.now()}".ljust(50))
+        print(f"\r{n_unmatched:,} unmatched at {datetime.now()}".ljust(50))
         print("✔ Complete!")
 
     except KeyboardInterrupt:
@@ -425,4 +425,4 @@ def get_random_entity(display=False, mongo_filter=None, hard_limit=False):
 
 
 if __name__ == '__main__':
-    run_all_match_filings(50)
+    pass
