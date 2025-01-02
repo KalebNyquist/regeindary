@@ -360,8 +360,7 @@ def run_all_match_filings(batch_size=False):
         n_unmatched = n_total - n_matched
         print(n_unmatched, "matched as of", datetime.now())
 
-        reference_unmatched = n_unmatched
-
+    reference_unmatched = n_unmatched
     reference_time = datetime.now()
 
     try:
@@ -371,16 +370,13 @@ def run_all_match_filings(batch_size=False):
             match_filing(filing)
             n_unmatched -= 1
 
-            # Show progress over time
-            if batch_size is False:
-                # - [ ] This fails if batch_size exists, because `reference_unmatched` does not get declared
-                time_difference = datetime.now() - reference_time
-                interval_minutes = 5
-                if time_difference.total_seconds() > (interval_minutes * 60):
-                    unmatched_difference = reference_unmatched - n_unmatched
-                    print(f"• {interval_minutes} minutes have passed and {unmatched_difference} matches have been made")
-                    reference_time = datetime.now()
-                    reference_unmatched = n_unmatched
+            time_difference = datetime.now() - reference_time
+            interval_minutes = 5
+            if time_difference.total_seconds() > (interval_minutes * 60):
+                unmatched_difference = reference_unmatched - n_unmatched
+                print(f"• {interval_minutes} minutes have passed and {unmatched_difference} matches have been made")
+                reference_time = datetime.now()
+                reference_unmatched = n_unmatched
 
         print(f"\r{n_unmatched:,} unmatched at {datetime.now()}".ljust(50))
         print("✔ Complete!")

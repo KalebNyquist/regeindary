@@ -64,7 +64,12 @@ def menu_select():
     print("[x] Quit")
 
     while True:
-        selection = input("Choose operation: ")
+        try:
+            selection = input("Choose operation: ")
+        except UnicodeDecodeError:
+            print("\nIt appears that the previous operation was interrupted. Please restart interface to choose another operation.")
+            break
+
         if selection == "1":
             utils.status_check()
         elif selection == "2":
