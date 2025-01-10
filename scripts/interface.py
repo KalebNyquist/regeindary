@@ -80,10 +80,11 @@ def menu_select():
             batch_size = input("How many matches to make? (Use `!` for all) ")
             if batch_size == "!":
                 utils.run_all_match_filings()
-            try:
-                utils.run_all_match_filings(int(batch_size))
-            except ValueError:
-                print(f"⚠️ {batch_size} is not an integer. Cannot execute.")
+            else:
+                try:
+                    utils.run_all_match_filings(int(batch_size))
+                except ValueError:
+                    print(f"⚠️ {batch_size} is not an integer. Cannot execute.")
         elif selection == "5":
             utils.get_random_entity(display="No Original", hard_limit=5000)
         elif selection == "H":
