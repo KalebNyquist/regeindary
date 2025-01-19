@@ -348,17 +348,18 @@ def run_all_match_filings(batch_size=False):
         print(f"Beginning a batch of {batch_size:,} filings at", datetime.now())
         n_unmatched = batch_size
     else:
-        print("Counting All Filings - ", datetime.now())
+        print(f"Counting All Filings - {datetime.now()}")
         n_total = mongo_regeindary[filings].count_documents(filter={}, hint="_id_")
-        print(n_total, "existing as of", datetime.now())
+        print(f"{n_total:,} existing as of {datetime.now()}")
 
-        print("Counting Matched Filings - ", datetime.now())
+        print(f"Counting Matched Filings - {datetime.now()}")
         n_matched = mongo_regeindary[filings].count_documents(matched_identifier)
-        print(n_matched, "matched as of", datetime.now())
+        print(f"{n_matched:,} matched as of {datetime.now()}")
 
-        print("Calculating Unmatched Filings - ", datetime.now())
+        print(f"Calculating Unmatched Filings - {datetime.now()}")
         n_unmatched = n_total - n_matched
-        print(n_unmatched, "matched as of", datetime.now())
+        print(f"{n_unmatched:,} matched as of {datetime.now()}")
+
 
     reference_unmatched = n_unmatched
     reference_time = datetime.now()
