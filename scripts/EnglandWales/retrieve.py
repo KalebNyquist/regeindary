@@ -1,3 +1,9 @@
+"""Data retrieval module for England & Wales charity registry.
+
+Downloads charity entities and filing data from the Charity Commission Register,
+extracts from zipped JSON files on Azure blob storage, applies field mappings,
+and uploads to MongoDB.
+"""
 from scripts.utils import *
 from requests import get
 from zipfile import ZipFile
@@ -23,6 +29,15 @@ registry_name = "England and Wales - Charity Commission Register of Charities"
 
 
 def retrieve_data(folder, label):
+    """Download and parse England & Wales charity data (entities or filings).
+
+    Args:
+        folder (str): Directory path for cache storage.
+        label (str): Dataset type - either "entities" or "filings".
+
+    Returns:
+        list: List of dictionaries containing charity or filing records.
+    """
     cached = check_for_cache(folder, label=label, suffix="json")
 
     print(f" Retrieving `{label}` dataset")
@@ -41,6 +56,14 @@ def retrieve_data(folder, label):
 
 
 def retrieval_with_unzip(label):
+    """Download, extract, and prepare zipped JSON data from Azure blob storage.
+
+    Args:
+        label (str): Dataset type - either "entities" or "filings".
+
+    Raises:
+        Exception: If HTTP status code is not 200.
+    """
     api_retrieval_point = api_retrieval_points[label]
 
     zipped_download = get(api_retrieval_point["url"])
@@ -76,6 +99,17 @@ def retrieval_with_unzip(label):
 
 
 def run_everything(folder=""):
+    """Main orchestration function for retrieving England & Wales charity data.
+
+    Processes both entities (charities) and filings (annual returns) from the
+    Charity Commission Register. Applies field mappings and uploads to MongoDB.
+
+    Args:
+        folder (str): Directory path for cache and mapping files. Defaults to "".
+
+    Returns:
+        dict or None: Dictionary of MongoDB insert results, or None if user skips upload.
+    """
     # Initiation Message
     print(f"Retrieving data from `{registry_name}`")
 

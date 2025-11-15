@@ -1,3 +1,9 @@
+"""Core utility functions for Regeindary registry data aggregation.
+
+This module provides MongoDB operations, field mapping, data upload, and entity-filing
+matching functionality for importing heterogeneous civil society registry data into
+a unified database structure.
+"""
 import inspect
 import tomllib
 import os
@@ -19,6 +25,15 @@ if parent_dir not in sys.path:
 
 # Prerequisite Functions to Create Globals
 def get_config():
+    """Load MongoDB configuration from config.toml file.
+
+    Returns:
+        dict: Configuration dictionary containing MongoDB connection settings.
+
+    Raises:
+        FileNotFoundError: If config.toml is not found in the scripts directory.
+        ValueError: If the TOML file contains invalid syntax.
+    """
 
     # Get the absolute path to the config file
     config_path = os.path.join(os.path.dirname(__file__), 'config.toml')
@@ -44,6 +59,13 @@ def get_config():
 
 
 def get_mongo_dbs():
+    """Initialize MongoDB client and return database and collection mappings.
+
+    Returns:
+        tuple: A tuple containing:
+            - mongodb_regeindary (Database): MongoDB database instance
+            - collections (dict): Dictionary mapping collection names to their configured names
+    """
     config = get_config()
 
     py_client = pymongo.MongoClient(config['mongo_path'])
@@ -66,6 +88,16 @@ filings = collections_map['filings']
 
 
 def check_for_cache(folder="", label="", suffix="csv"):
+    """Check if a cached data file exists and prompt user whether to use it.
+
+    Args:
+        folder (str): Directory path where cache file is located. Defaults to "".
+        label (str): Label to distinguish cache files. Defaults to "".
+        suffix (str): File extension for cache file. Defaults to "csv".
+
+    Returns:
+        bool: True if cached file should be used, False if new download is needed.
+    """
 
     if label == "":
         underscore_value = ""
@@ -92,6 +124,15 @@ def check_for_cache(folder="", label="", suffix="csv"):
 
 
 def delete_old_records(registry_id, collection='organizations'):
+    """Check for existing records and prompt user to delete them.
+
+    Args:
+        registry_id (ObjectId): MongoDB ObjectId of the registry.
+        collection (str): Collection name ('organizations' or 'filings'). Defaults to 'organizations'.
+
+    Returns:
+        str or int: 'y' if records deleted, 'n' or 's' if skipped, or 0 if no records exist.
+    """
     global mongo_regeindary, collections_map
 
     record_count = mongo_regeindary[collections_map[collection]].count_documents({"registryID": registry_id})
@@ -115,7 +156,21 @@ def delete_old_records(registry_id, collection='organizations'):
 
 
 def send_all_to_mongodb(records, mapping, static, collection='organizations'):
-    # Optimized to use insert_many() for batch insertion instead of looping insert_one()
+    """Upload multiple records to MongoDB using batch insertion with progress tracking.
+
+    Optimized to use insert_many() for batch insertion instead of looping insert_one().
+    Pre-processes all records to apply mapping transformations, then inserts all documents
+    in a single batch operation for better performance.
+
+    Args:
+        records (list): List of record dictionaries to upload.
+        mapping (dict): Field mapping dictionary (origin field -> target field).
+        static (dict): Static fields to add to every record (e.g., registryID, registryName).
+        collection (str): Target collection name. Defaults to 'organizations'.
+
+    Returns:
+        dict: Dictionary mapping record index (1-based) to MongoDB ObjectIds.
+    """
     global mongo_regeindary, collections_map
 
     # Pre-process all records to apply mapping transformations
@@ -149,6 +204,17 @@ def send_all_to_mongodb(records, mapping, static, collection='organizations'):
 
 
 def send_to_mongodb(record, mapping, static, collection):
+    """Upload a single record to MongoDB with field mapping applied.
+
+    Args:
+        record (dict): Record dictionary to upload.
+        mapping (dict): Field mapping dictionary (origin field -> target field).
+        static (dict): Static fields to add to the record.
+        collection (str): Target collection name.
+
+    Returns:
+        InsertOneResult: MongoDB insert result object.
+    """
     global mongo_regeindary, collections_map
     upload_dict = static.copy()
     for m in mapping.keys():
@@ -162,8 +228,21 @@ def send_to_mongodb(record, mapping, static, collection):
 
 
 def meta_check(registry_name, source_url, collection="organizations"):
-    """Checks to see if the registry is listed in the database. If it does not exist, it creates a listing and
-    returns the id of the listing. If it does exist, it finds the listing and returns the id."""
+    """Check if registry exists in metadata collection, create if needed, and manage old records.
+
+    Args:
+        registry_name (str): Name of the registry (e.g., "Australia - ACNC Charity Register").
+        source_url (str): URL of the registry data source.
+        collection (str): Collection to check for old records. Defaults to "organizations".
+
+    Returns:
+        tuple: A tuple containing:
+            - registry_id (ObjectId): MongoDB ObjectId of the registry metadata
+            - decision (str or None): User's deletion decision ('y', 'n', 's', or None)
+
+    Raises:
+        Exception: If multiple registries with the same name exist (database integrity error).
+    """
     preexisting_registries = mongo_regeindary[meta].count_documents({"name": registry_name})
 
     if preexisting_registries == 0:
@@ -185,6 +264,14 @@ def meta_check(registry_name, source_url, collection="organizations"):
 
 
 def retrieve_mapping(folder=""):
+    """Load field mapping from mapping.json file.
+
+    Args:
+        folder (str): Directory containing mapping.json. Defaults to current directory.
+
+    Returns:
+        dict: Dictionary mapping origin field names to target field names.
+    """
     with open(f"{folder}mapping.json", "r") as m:
         mp = json.load(m)
     mapping = {feature['origin']: feature['target'] for feature in mp}
@@ -192,12 +279,24 @@ def retrieve_mapping(folder=""):
 
 
 def list_registries():
+    """Retrieve all registries from the metadata collection.
+
+    Returns:
+        list: List of registry metadata documents.
+    """
     mongo_registries = mongo_regeindary[meta].find({})
     mongo_registries = [mongo_registry for mongo_registry in mongo_registries]
     return mongo_registries
 
 
 def status_check():
+    """Display comprehensive database statistics including registries, organizations, and filings.
+
+    Prints:
+        - Total counts of registries, organizations, and filings
+        - Per-registry statistics with completion timestamps
+        - Database size in bytes and gigabytes
+    """
     global mongo_regeindary, collections_map
 
     print("Status Check Beginning")
@@ -257,6 +356,16 @@ def status_check():
 
 
 def keyword_match_assist(select=None):
+    """Interactive tool to check field mapping coverage against schema for a selected registry.
+
+    Args:
+        select (str, optional): Pre-selected registry option number. If None, prompts user to select.
+
+    Displays:
+        - Schema fields that are mapped (✅)
+        - Schema fields that are missing (unmapped)
+        - Random entity with field-by-field mapping status
+    """
 
     directory_map = {
         "New Zealand - The Charities Register/Te Rēhita Kaupapa Atawhai": "NewZealand",
@@ -318,12 +427,32 @@ def keyword_match_assist(select=None):
 
 
 def index_check(collection, identifiers):
+    """Create a compound index on specified fields if it doesn't exist.
+
+    Args:
+        collection (Collection): MongoDB collection object.
+        identifiers (list): List of field names to include in compound index.
+
+    Returns:
+        str: Name of the created or existing index.
+    """
     desired_index = [(k, pymongo.ASCENDING) for k in identifiers]
     result = collection.create_index(desired_index)
     return result
 
 
 def create_organization_from_orphan_filing(filing):
+    """Create an organization record from a filing that has no matching organization.
+
+    Clones relevant fields from the filing to create a minimal organization record.
+    Includes breadcrumb metadata for tracing the auto-generated organization back to its source.
+
+    Args:
+        filing (dict): Filing document that has no matching organization.
+
+    Returns:
+        ObjectId: MongoDB ObjectId of the newly created organization.
+    """
 
     fields_to_clone = [
         'registryName',
@@ -352,6 +481,22 @@ def create_organization_from_orphan_filing(filing):
 
 
 def match_filing(filing, matching_field='entityId', auto_create_from_orphan=True):
+    """Link a filing to its corresponding organization by updating the filing's entityId_mongo field.
+
+    Args:
+        filing (dict): Filing document to match.
+        matching_field (str): Field name to use for matching. Defaults to 'entityId'.
+                             Note: Use 'entityIndex' for England/Wales for better matching.
+        auto_create_from_orphan (bool): If True, automatically create organization from orphan filing.
+                                        If False, prompt user for decision. Defaults to True.
+
+    Returns:
+        UpdateResult: MongoDB update result object.
+
+    Raises:
+        Exception: If multiple organizations match (database integrity error) or if user declines
+                  to create organization from orphan filing.
+    """
     # - [ ] note UK/Wales works better when matching_field='entityIndex'
     entity_id = filing[matching_field]
     registry_id = filing['registryID']  # - [ ] registryID -> registryId
@@ -388,6 +533,15 @@ def match_filing(filing, matching_field='entityId', auto_create_from_orphan=True
 
 
 def run_all_match_filings(batch_size=False):
+    """Match all unmatched filings to their corresponding organizations with progress tracking.
+
+    Creates necessary indexes for performance, then iteratively processes unmatched filings.
+    Displays progress updates every 5 minutes. Supports graceful interruption via Ctrl+C.
+
+    Args:
+        batch_size (int or False): Number of filings to match. If False, matches all unmatched
+                                   filings. Defaults to False.
+    """
 
     # - [ ] Turn into a Loop
     print("Checking for Index #1 -", datetime.now())  # - [ ] this one can be deleted if UK/Wales resolved
@@ -443,6 +597,15 @@ def run_all_match_filings(batch_size=False):
 
 
 def completion_timestamp(meta_id, completion_type="download"):
+    """Update registry metadata with completion timestamp.
+
+    Args:
+        meta_id (ObjectId): MongoDB ObjectId of the registry metadata document.
+        completion_type (str): Type of completion to timestamp (e.g., "download"). Defaults to "download".
+
+    Returns:
+        UpdateResult: MongoDB update result object.
+    """
     result = mongo_regeindary[meta].update_one(
         {
             "_id": meta_id
@@ -456,6 +619,18 @@ def completion_timestamp(meta_id, completion_type="download"):
 
 
 def get_random_entity(display=False, mongo_filter=None, hard_limit=False):
+    """Retrieve a random organization entity from the database.
+
+    Args:
+        display (bool or str): If True, pretty-print the entity. If "No Original", exclude
+                              "Original Data" field from output. Defaults to False.
+        mongo_filter (dict, optional): MongoDB filter to constrain random selection. Defaults to None.
+        hard_limit (int or False): Maximum number of documents to consider. Useful for large collections.
+                                  Defaults to False.
+
+    Returns:
+        dict: Random organization document from the database.
+    """
     print("Retrieving random entry")
     if mongo_filter is None:
         mongo_filter = {}
