@@ -203,9 +203,12 @@ def status_check():
         print(completion_time, end="...................")
 
         n_orgs_in_registry = mongo_regeindary[orgs].count_documents({'registryID': registry['_id']})
-        fraction = n_orgs_in_registry / n_organizations
-        percentage = round(fraction * 100, 2)
-        percentage = f"{percentage}%"
+        if n_organizations > 0:
+            fraction = n_orgs_in_registry / n_organizations
+            percentage = round(fraction * 100, 2)
+            percentage = f"{percentage}%"
+        else:
+            percentage = "N/A"
         print(f"{n_orgs_in_registry} orgs ({percentage})".ljust(10), end="")
         n_filings_in_registry = mongo_regeindary[filings].count_documents({'registryID': registry['_id']})
         print(f" & {n_filings_in_registry} filings".ljust(30))
