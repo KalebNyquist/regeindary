@@ -316,7 +316,7 @@ def download_990s(locations):
         z = 0
         response = requests.get(url, stream=True)
         print("Response received")
-        with open(f'{directory_path}\\{file_name}', 'wb') as out_file:
+        with open(os.path.join(directory_path, file_name), 'wb') as out_file:
             for chunk in response.iter_content(chunk_size=512):
                 out_file.write(chunk)
                 # shutil.copyfileobj(response.raw, out_file)
@@ -330,9 +330,9 @@ def unzip_990s():
     directory_files = os.listdir(directory_path)
 
     def extract(file_name, year):
-        file_path = f'{directory_path}\\{file_name}'
+        file_path = os.path.join(directory_path, file_name)
         with zipfile.ZipFile(file_path, 'r') as zObject:
-            zObject.extractall(path=f"filings\\{year}\\")
+            zObject.extractall(path=os.path.join("filings", year))
 
     for i, file_name in enumerate(directory_files):
         file_name = get_file_name(file_name)
