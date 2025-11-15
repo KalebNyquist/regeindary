@@ -1,31 +1,63 @@
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
+
+# Distribution / packaging
 .Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Virtual environments
-venv/
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Environments
+.env
+.venv
 env/
+venv/
 ENV/
+env.bak/
+venv.bak/
 
-# IDE
+# IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-
-# OS
 .DS_Store
-Thumbs.db
 
-# Project-specific cache/data files
-scripts/Australia/*.csv
-scripts/EnglandWales/*.json
-scripts/EnglandWales/*.zip
-scripts/NewZealand/*.csv
-scripts/UnitedStates/*.csv
-scripts/UnitedStates/*.zip
-scripts/UnitedStates/*.json
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Project-specific cache files
+scripts/*/cache*.csv
+scripts/*/cache*.json
+scripts/*/cache*.zip
+temp/
