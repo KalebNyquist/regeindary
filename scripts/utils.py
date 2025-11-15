@@ -13,13 +13,22 @@ from datetime import datetime
 from pprint import pp
 import random
 import sys
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 
 # Add the project root directory to sys.path if it's not already there
 project_root = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(project_root)
 if parent_dir not in sys.path:
-    print("Adding root")
+    logger.debug(f"Adding project root to sys.path: {parent_dir}")
     sys.path.append(parent_dir)
 
 
@@ -105,9 +114,9 @@ def check_for_cache(folder="", label="", suffix="csv"):
         underscore_value = "_"
 
     cache_path = f'{folder}cache{underscore_value}{label}.{suffix}'
-    print(" Cache path:", cache_path)
+    logger.info(f"Checking cache path: {cache_path}")
     if os.path.exists(cache_path):
-        print(" Cached file exists")
+        logger.info("Cached file found")
         cached = None
         while cached is None:
             option = input(" Download new copy? (y/n) ")
@@ -116,9 +125,10 @@ def check_for_cache(folder="", label="", suffix="csv"):
             elif option.lower() == "n":
                 cached = True
             else:
-                print(" Invalid option. Select `y` or `n`.")
+                print(" Invalid option. Select 'y' or 'n'.")
+        logger.info(f"Using cached file: {cached}")
     else:
-        print(" Cached file does not exist")
+        logger.info("No cached file found, will download fresh data")
         cached = False
     return cached
 
@@ -136,7 +146,7 @@ def delete_old_records(registry_id, collection='organizations'):
     global mongo_regeindary, collections_map
 
     record_count = mongo_regeindary[collections_map[collection]].count_documents({"registryID": registry_id})
-    print("", record_count, "records associated with registry.")
+    logger.info(f"Found {record_count:,} existing records for this registry in '{collection}' collection")
     if record_count > 0:
         delete_option = None
         option = None
@@ -147,9 +157,11 @@ def delete_old_records(registry_id, collection='organizations'):
             elif (option.lower() == "n") or (option.lower() == "s"):
                 delete_option = False
             else:
-                print(" Invalid option. Select `y`, `n`, or `s`.")
+                print(" Invalid option. Select 'y', 'n', or 's'.")
         if delete_option:
+            logger.warning(f"Deleting {record_count:,} existing records from '{collection}' collection")
             mongo_regeindary[collections_map[collection]].delete_many({"registryID": registry_id})
+            logger.info("Old records deleted successfully")
             option = "y"
         return option
     return record_count
@@ -175,10 +187,11 @@ def send_all_to_mongodb(records, mapping, static, collection='organizations'):
 
     # Pre-process all records to apply mapping transformations
     upload_documents = []
+    logger.info(f"Transforming {len(records):,} records for MongoDB insertion")
     for i, record in enumerate(records, start=1):
         if (i % 100 == 0) or (i == len(records)):
             percentage = "%.2f" % (100 * i/len(records))
-            print(f"\r {i}/{len(records)} ({percentage}%) records transformed", end="")
+            print(f"\r  Transformed {i:,}/{len(records):,} ({percentage}%) records", end="")
 
         # Apply mapping transformation (same logic as send_to_mongodb)
         upload_dict = static.copy()
@@ -191,12 +204,12 @@ def send_all_to_mongodb(records, mapping, static, collection='organizations'):
     print()  # New line after transformation progress
 
     # Batch insert all documents at once
-    print(f" Inserting {len(upload_documents)} documents to MongoDB...", end="")
+    logger.info(f"Inserting {len(upload_documents):,} documents to '{collection}' collection")
     result = mongo_regeindary[collections_map[collection]].insert_many(
         upload_documents,
         ordered=False  # Continue on error, more resilient for large batches
     )
-    print(" ✔")
+    logger.info(f"✔ Successfully inserted {len(result.inserted_ids):,} documents")
 
     # Return results in compatible format
     results = {i+1: result.inserted_ids[i] for i in range(len(result.inserted_ids))}
@@ -246,20 +259,23 @@ def meta_check(registry_name, source_url, collection="organizations"):
     preexisting_registries = mongo_regeindary[meta].count_documents({"name": registry_name})
 
     if preexisting_registries == 0:
-        print("", registry_name, "does not exist in collection. Creating now.")
+        logger.info(f"Registry '{registry_name}' not found in metadata collection - creating new entry")
         result = mongo_regeindary[meta].insert_one({
             "name": registry_name,
             "source": source_url
         })
+        logger.info(f"Created new registry metadata with ID: {result.inserted_id}")
         return result.inserted_id, None
     elif preexisting_registries == 1:
-        print("", registry_name, "exists. Accessing now.")
+        logger.info(f"Registry '{registry_name}' found in metadata collection")
         result = mongo_regeindary[meta].find_one({"name": registry_name})
         decision = delete_old_records(result['_id'], collection)
         return result['_id'], decision
     elif preexisting_registries >= 2:
+        logger.error(f"Database integrity error: Found {preexisting_registries} registries with name '{registry_name}'")
         raise Exception(f"Database integrity error: Found {preexisting_registries} registries with name '{registry_name}'. Expected 0 or 1.")
     else:
+        logger.error(f"Unexpected database state: Registry count for '{registry_name}' is {preexisting_registries}")
         raise Exception(f"Unexpected database state: Registry count for '{registry_name}' is {preexisting_registries}. This should not be possible.")
 
 
@@ -299,7 +315,7 @@ def status_check():
     """
     global mongo_regeindary, collections_map
 
-    print("Status Check Beginning")
+    logger.info("Starting database status check")
     print("  Counting # Registries...", end="")
     n_registries = mongo_regeindary[meta].count_documents({}, hint="_id_")
     print(" ✔\n  Counting # Organizations...", end="")
@@ -310,6 +326,8 @@ def status_check():
 
     registries = list_registries()
 
+    logger.info(f"Database contains: {n_registries} registries, {n_organizations:,} organizations, {n_filings:,} filings")
+    print(f"{n_registries} registries, {n_organizations:,} organizations, and {n_filings:,} filings")
     # Optimized: Use aggregation pipeline to get counts for all registries in 2 queries instead of 2*N queries
     print("  Aggregating counts by registry...", end="")
     org_counts_cursor = mongo_regeindary[orgs].aggregate([
@@ -352,7 +370,9 @@ def status_check():
         print(f" & {n_filings_in_registry} filings".ljust(30))
 
     total_size = mongo_regeindary.command("dbstats")['totalSize']
-    print(int(total_size), "bytes =", round((total_size / 1024 ** 3), 2), "gigabytes")
+    size_gb = round((total_size / 1024 ** 3), 2)
+    logger.info(f"Total database size: {size_gb} GB ({int(total_size):,} bytes)")
+    print(f"{int(total_size):,} bytes = {size_gb} gigabytes")
 
 
 def keyword_match_assist(select=None):
@@ -394,7 +414,7 @@ def keyword_match_assist(select=None):
             if select in options.keys():
                 break
     else:
-        print(options[select]["name"], "preselected")
+        logger.info(f"Registry preselected: {options[select]['name']}")
 
     # MAIN FUNCTION
     directory = directory_map[options[select]["name"]]
@@ -405,9 +425,11 @@ def keyword_match_assist(select=None):
         schema = json.load(s)
 
     overlap = set.intersection(set([x['target'] for x in mapping]), set(schema['properties'].keys()))
-    print("Schema fields already accounted for:", ", ".join(overlap))
+    logger.info(f"Mapped schema fields ({len(overlap)}): {', '.join(sorted(overlap))}")
+    print("✅ Schema fields already accounted for:", ", ".join(sorted(overlap)))
     missing = set.difference(set(schema['properties'].keys()), set([x['target'] for x in mapping]))
-    print("Schema fields not accounted for:", ", ".join(missing))
+    logger.info(f"Unmapped schema fields ({len(missing)}): {', '.join(sorted(missing))}")
+    print("⬜ Schema fields not accounted for:", ", ".join(sorted(missing)))
 
     random_entity = get_random_entity(mongo_filter={"registryID": options[select]['id']})
 
@@ -510,9 +532,11 @@ def match_filing(filing, matching_field='entityId', auto_create_from_orphan=True
 
     if len(matched_orgs) == 0:
         if auto_create_from_orphan:
+            logger.warning(f"No matching organization found for filing with {matching_field}='{entity_id}' - creating orphan organization")
             entity_id_mongo = create_organization_from_orphan_filing(filing)
         else:
-            print("⚠️ No matching organization found for filing (see below).")
+            logger.warning(f"No matching organization found for filing with {matching_field}='{entity_id}'")
+            print("⚠️  No matching organization found for filing (see below).")
             pp(filing)
             manual_decision = input("Create Organization from Orphan Filing? (y/n) ")
             if manual_decision == "y":
@@ -520,6 +544,7 @@ def match_filing(filing, matching_field='entityId', auto_create_from_orphan=True
             else:
                 raise Exception(f"No matching organization found for filing with {matching_field}='{entity_id}' in registry '{registry_id}'. User declined to create orphan organization.")
     elif len(matched_orgs) >= 2:
+        logger.error(f"Database integrity error: Found {len(matched_orgs)} organizations matching {matching_field}='{entity_id}'")
         raise Exception(f"Database integrity error: Found {len(matched_orgs)} organizations matching {matching_field}='{entity_id}' in registry '{registry_id}'. Expected 0 or 1. Filing ID: {filing.get('_id', 'unknown')}")
     elif len(matched_orgs) == 1:
         [matched_org] = matched_orgs
@@ -544,31 +569,31 @@ def run_all_match_filings(batch_size=False):
     """
 
     # - [ ] Turn into a Loop
-    print("Checking for Index #1 -", datetime.now())  # - [ ] this one can be deleted if UK/Wales resolved
+    logger.info("Creating indexes for optimal matching performance")
+    logger.debug(f"Index #1: organizations(registryID, entityIndex) - {datetime.now()}")
     index_check(mongo_regeindary[orgs], ['registryID', 'entityIndex'])
-    print("Checking for Index #2 -", datetime.now())
+    logger.debug(f"Index #2: filings(entityId_mongo) - {datetime.now()}")
     index_check(mongo_regeindary[filings], ['entityId_mongo'])
-    print("Checking for Index #3 -", datetime.now())
+    logger.debug(f"Index #3: organizations(registryID, entityId) - {datetime.now()}")
     index_check(mongo_regeindary[orgs], ['registryID', 'entityId'])
 
     unmatched_identifier = {"entityId_mongo": {"$exists": False}}
     matched_identifier = {"entityId_mongo": {"$exists": True}}
 
     if batch_size:
-        print(f"Beginning a batch of {batch_size:,} filings at", datetime.now())
+        logger.info(f"Starting batch matching operation for {batch_size:,} filings")
         n_unmatched = batch_size
     else:
-        print(f"Counting All Filings - {datetime.now()}")
+        logger.info("Counting total filings...")
         n_total = mongo_regeindary[filings].count_documents(filter={}, hint="_id_")
-        print(f"{n_total:,} existing as of {datetime.now()}")
+        logger.info(f"Total filings: {n_total:,}")
 
-        print(f"Counting Matched Filings - {datetime.now()}")
+        logger.info("Counting matched filings...")
         n_matched = mongo_regeindary[filings].count_documents(matched_identifier)
-        print(f"{n_matched:,} matched as of {datetime.now()}")
+        logger.info(f"Already matched: {n_matched:,}")
 
-        print(f"Calculating Unmatched Filings - {datetime.now()}")
         n_unmatched = n_total - n_matched
-        print(f"{n_unmatched:,} matched as of {datetime.now()}")
+        logger.info(f"Unmatched filings to process: {n_unmatched:,}")
 
 
     reference_unmatched = n_unmatched
@@ -576,7 +601,7 @@ def run_all_match_filings(batch_size=False):
 
     try:
         while n_unmatched > 0:
-            print(f"\r{n_unmatched:,} unmatched at {datetime.now()}".ljust(50), end="")
+            print(f"\r  {n_unmatched:,} unmatched filings remaining".ljust(50), end="")
             filing = mongo_regeindary[filings].find_one(unmatched_identifier)
             match_filing(filing)
             n_unmatched -= 1
@@ -585,15 +610,17 @@ def run_all_match_filings(batch_size=False):
             interval_minutes = 5
             if time_difference.total_seconds() > (interval_minutes * 60):
                 unmatched_difference = reference_unmatched - n_unmatched
-                print(f"• {interval_minutes} minutes have passed and {unmatched_difference} matches have been made")
+                logger.info(f"Progress update: {unmatched_difference:,} filings matched in last {interval_minutes} minutes")
+                print(f"\n• {interval_minutes} minutes elapsed: {unmatched_difference:,} filings matched")
                 reference_time = datetime.now()
                 reference_unmatched = n_unmatched
 
-        print(f"\r{n_unmatched:,} unmatched at {datetime.now()}".ljust(50))
-        print("✔ Complete!")
+        print(f"\r  All filings matched successfully!".ljust(50))
+        logger.info("✔ Filing matching completed successfully")
 
     except KeyboardInterrupt:
-        print("Matching Process Stopped")
+        logger.warning("Matching process interrupted by user")
+        print("\nMatching process stopped by user")
 
 
 def completion_timestamp(meta_id, completion_type="download"):
@@ -631,7 +658,7 @@ def get_random_entity(display=False, mongo_filter=None, hard_limit=False):
     Returns:
         dict: Random organization document from the database.
     """
-    print("Retrieving random entry")
+    logger.debug("Retrieving random organization entity from database")
     if mongo_filter is None:
         mongo_filter = {}
         hint = "_id_"
