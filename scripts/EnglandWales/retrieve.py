@@ -20,7 +20,6 @@ api_retrieval_points = {
 source_url = 'https://register-of-charities.charitycommission.gov.uk/en/register/full-register-download'
 headers = {"user-agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0"}
 registry_name = "England and Wales - Charity Commission Register of Charities"
-global mongo_regeindary
 
 
 def retrieve_data(folder, label):
