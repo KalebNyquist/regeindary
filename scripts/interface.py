@@ -1,3 +1,8 @@
+"""Interactive command-line interface for Regeindary operations.
+
+This module provides the main menu system for retrieving registry data,
+checking database status, matching filings to entities, and other administrative tasks.
+"""
 import sys
 import os
 import utils
@@ -11,6 +16,19 @@ if parent_dir not in sys.path:
 
 
 def retrieve_registries():
+    """Interactive menu for selecting and retrieving data from available registries.
+
+    Prompts user to select one or more registries to download and import data from.
+    Supports individual selection, multiple selections (comma-separated), or 'A' for all registries.
+
+    Options:
+        [1] Australia
+        [2] England and Wales
+        [3] New Zealand
+        [4] United States
+        [A] Run All
+        [X] Exit
+    """
     retrieval_options = """[1] Australia
 [2] England and Wales
 [3] New Zealand
@@ -53,6 +71,20 @@ def retrieve_registries():
 
 
 def menu_select():
+    """Main interactive menu for Regeindary operations.
+
+    Displays a menu of available operations and processes user selections in a loop
+    until the user chooses to quit. Handles UnicodeDecodeError gracefully.
+
+    Menu Options:
+        [1] Run Status Check - Display database statistics
+        [2] Retrieve Registries - Download and import registry data
+        [3] Keyword Match Assist - Check field mapping coverage
+        [4] Match Filings with Entities - Link filings to organizations
+        [5] Display Random Entity - Inspect a random organization record
+        [H] Hello World - Test function
+        [x] Quit - Exit the program
+    """
     print("Welcome to Regeindary")
     print("=====================")
     print("[1] Run Status Check")

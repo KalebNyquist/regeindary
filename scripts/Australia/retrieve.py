@@ -1,3 +1,8 @@
+"""Data retrieval module for Australian charity registry (ACNC).
+
+Downloads charity data from the Australian Charities and Not-for-profits Commission,
+applies field mappings according to mapping.json, and uploads to MongoDB.
+"""
 import os
 import sys
 
@@ -22,6 +27,14 @@ registry_name = "Australia - ACNC Charity Register"
 
 # Functions
 def retrieve_data(folder):
+    """Download and parse Australian charity register data.
+
+    Args:
+        folder (str): Directory path for cache storage.
+
+    Returns:
+        list: List of dictionaries containing charity records from Australia.
+    """
     cached = check_for_cache(folder)
 
     if cached:
@@ -44,6 +57,17 @@ def retrieve_data(folder):
 
 
 def run_everything(folder=""):
+    """Main orchestration function for retrieving and uploading Australian charity data.
+
+    Downloads data from the Australian Charities and Not-for-profits Commission (ACNC),
+    applies field mappings, and uploads to MongoDB with legal notice metadata.
+
+    Args:
+        folder (str): Directory path for cache and mapping files. Defaults to "".
+
+    Returns:
+        dict: Dictionary of MongoDB insert results indexed by record number.
+    """
     # Initiation Message
     print(f"Retrieving data from `{registry_name}`")
 

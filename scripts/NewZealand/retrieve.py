@@ -1,3 +1,9 @@
+"""Data retrieval module for New Zealand charity registry.
+
+Downloads charity data from The Charities Register/Te Rēhita Kaupapa Atawhai
+via OData API, applies field mappings, and uploads to MongoDB. Includes anti-spam
+legal notice per Unsolicited Electronic Messages Act 2007.
+"""
 from requests import get
 from io import StringIO
 import pandas as pd
@@ -11,6 +17,14 @@ registry_name = "New Zealand - The Charities Register/Te Rēhita Kaupapa Atawhai
 
 
 def retrieve_data(folder):
+    """Download and parse New Zealand charity register data from OData API.
+
+    Args:
+        folder (str): Directory path for cache storage.
+
+    Returns:
+        list: List of dictionaries containing charity records from New Zealand.
+    """
     cached = check_for_cache(folder)
 
     if cached:
@@ -40,6 +54,18 @@ def retrieve_data(folder):
 
 
 def run_everything(folder=""):
+    """Main orchestration function for retrieving New Zealand charity data.
+
+    Downloads data from The Charities Register/Te Rēhita Kaupapa Atawhai,
+    applies field mappings, and uploads to MongoDB. Includes legal notice about
+    email anti-spam requirements per the Unsolicited Electronic Messages Act 2007.
+
+    Args:
+        folder (str): Directory path for cache and mapping files. Defaults to "".
+
+    Returns:
+        dict: Dictionary of MongoDB insert results indexed by record number.
+    """
     # Initiation Message
     print(f"Retrieving data from `{registry_name}`")
 
