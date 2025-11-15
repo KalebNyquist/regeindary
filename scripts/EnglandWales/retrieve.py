@@ -10,6 +10,9 @@ from zipfile import ZipFile
 import shutil
 import os
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Globals
 api_retrieval_points = {
@@ -40,18 +43,21 @@ def retrieve_data(folder, label):
     """
     cached = check_for_cache(folder, label=label, suffix="json")
 
-    print(f" Retrieving `{label}` dataset")
+    logger.info(f"Retrieving '{label}' dataset")
 
     if cached:
-        print(" Skipping Steps 1-3: Retrieving cached copy")
+        logger.info("Loading data from cache")
     elif cached is False:
-        print(" Step 1 of X: Retrieving zip file from source")
+        logger.info(f"Downloading {label} data from Azure blob storage")
+        print(f"  Step 1: Downloading and extracting {label} data...")
         retrieval_with_unzip(label)
 
-    print(" Step 4 of X: Load JSON file")
+    logger.info(f"Loading JSON data from cache_{label}.json")
+    print(f"  Step 2: Loading JSON data...")
     with open(f"{folder}cache_{label}.json", encoding="utf-8-sig") as js:
         response_dicts = json.load(js)
 
+    logger.info(f"Loaded {len(response_dicts):,} {label} records")
     return response_dicts
 
 
@@ -66,17 +72,20 @@ def retrieval_with_unzip(label):
     """
     api_retrieval_point = api_retrieval_points[label]
 
+    logger.info(f"Downloading from {api_retrieval_point['url']}")
     zipped_download = get(api_retrieval_point["url"])
 
     if (sc := zipped_download.status_code) != 200:
+        logger.error(f"HTTP request failed with status code {sc}")
         raise Exception(f"Actual Status Code {str(sc)} ≠ Expected Status Code 200")
 
+    logger.debug(f"Saving zipped data to cache_{label}.zip")
     with open(f"cache_{label}.zip", 'wb') as zd:
         zd.write(zipped_download.content)
         zd.close()
 
     specific_file_name = api_retrieval_point["filename"]
-    print(f" Step 2 of X: Extracting desired file `{specific_file_name}` from zip file")
+    logger.info(f"Extracting {specific_file_name} from zip archive")
 
     with ZipFile(f"cache_{label}.zip", 'r') as zf:
         zf.extractall("temp")
@@ -86,16 +95,16 @@ def retrieval_with_unzip(label):
 
     try:
         os.remove(f"cache_{label}.json")
-        print(" Cache removed successfully")
+        logger.debug("Removed old cache file")
     except OSError as error:
-        print(error)
-        print(" Cache cannot be removed, assumed to not exist")
+        logger.debug(f"No old cache file to remove: {error}")
 
     os.rename(specific_file_name, f"cache_{label}.json")
 
-    print(" Step 3 of X: Cleanup of temporary files")
+    logger.debug("Cleaning up temporary files")
     os.rmdir("temp")
     os.remove(f"cache_{label}.zip")
+    logger.info("Download and extraction complete")
 
 
 def run_everything(folder=""):
@@ -111,11 +120,15 @@ def run_everything(folder=""):
         dict or None: Dictionary of MongoDB insert results, or None if user skips upload.
     """
     # Initiation Message
-    print(f"Retrieving data from `{registry_name}`")
+    logger.info(f"========== Starting {registry_name} data retrieval ==========")
+    print(f"\n{'='*70}")
+    print(f"Retrieving data from: {registry_name}")
+    print(f"{'='*70}\n")
 
     # Entities
-    print(f"Starting with entities...")
-    # Download Data
+    logger.info("Phase 1: Processing charity entities")
+    print("Phase 1: Processing Charity Entities")
+    print("-" * 70)
     raw_dicts = retrieve_data(folder, label="entities")
     custom_mapping = retrieve_mapping(folder)
     meta_id, skip = meta_check(registry_name, source_url)
@@ -126,22 +139,28 @@ def run_everything(folder=""):
         "registryID": meta_id
     }
 
-    print("", len(raw_dicts), "records retrieved from original source file")
+    logger.info(f"Retrieved {len(raw_dicts):,} entity records")
+    print(f"  Retrieved {len(raw_dicts):,} entity records\n")
     final_results = None
     if skip != 's':
         final_results = send_all_to_mongodb(raw_dicts, custom_mapping, static_amendment)
 
     # Filings
-    print("\nContinuing with filings...")
+    logger.info("Phase 2: Processing charity filings")
+    print(f"\n{'='*70}")
+    print("Phase 2: Processing Charity Filings (Annual Returns)")
+    print("-" * 70)
     raw_dicts = retrieve_data(folder, label="filings")
     meta_id, skip = meta_check(registry_name, source_url, collection="filings")
 
-    print("", len(raw_dicts), "records retrieved from original source file")
+    logger.info(f"Retrieved {len(raw_dicts):,} filing records")
+    print(f"  Retrieved {len(raw_dicts):,} filing records\n")
     if skip != 's':
         final_results = send_all_to_mongodb(raw_dicts, custom_mapping, static_amendment, collection='filings')
 
     completion_timestamp(meta_id)
-    print("\n ✔ Complete")
+    logger.info(f"✔ {registry_name} data retrieval completed successfully")
+    print("\n✔ England & Wales import complete\n")
     return final_results
 
 

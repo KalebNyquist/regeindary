@@ -5,17 +5,19 @@ applies field mappings according to mapping.json, and uploads to MongoDB.
 """
 import os
 import sys
+import logging
 
 # Add the project root directory to sys.path if it's not already there
 # This allows for same functionality in Anaconda Powershell as in Pycharm
 project_root = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(project_root)
 if parent_dir not in sys.path:
-    print("Adding root")
     sys.path.append(parent_dir)
 
 import pandas as pd
 from scripts.utils import *
+
+logger = logging.getLogger(__name__)
 
 # Globals
 api_retrieval_point = ("https://data.gov.au/data/dataset/b050b242-4487-4306-abf5-07ca073e5594/resource/8fb32972-24e9"
@@ -38,19 +40,23 @@ def retrieve_data(folder):
     cached = check_for_cache(folder)
 
     if cached:
-        print(" Skipping Step 1: Retrieving cached copy")
+        logger.info("Loading data from cache")
         response_df = pd.read_csv(f"{folder}cache.csv", encoding_errors="backslashreplace",
                                   low_memory=False)  # Encoding error unique to Australia
     elif cached is False:
         # Structure -- Encoding error unique to Australia
-        print(f" Step 1 of 2: Downloading data into a dataframe".ljust(50), end="\n")
+        logger.info(f"Downloading Australian charity data from {api_retrieval_point}")
+        print("  Step 1/2: Downloading data into dataframe...")
         response_df = pd.read_csv(api_retrieval_point, encoding_errors="backslashreplace")
         response_df.to_csv(f"{folder}cache.csv")
+        logger.info(f"Data cached to {folder}cache.csv")
     else:
+        logger.error(f"Unexpected cache state: {cached}")
         raise Exception(f"Unexpected cache state: cached={cached}. Expected True or False.")
 
     # Structure
-    print(" Step 2 of 2: Structuring data as dicts".ljust(50), end="\n")
+    logger.info(f"Converting {len(response_df):,} records to dictionary format")
+    print("  Step 2/2: Converting to dictionary format...")
     response_dicts = response_df.to_dict(orient="records")
 
     return response_dicts
@@ -69,7 +75,10 @@ def run_everything(folder=""):
         dict: Dictionary of MongoDB insert results indexed by record number.
     """
     # Initiation Message
-    print(f"Retrieving data from `{registry_name}`")
+    logger.info(f"========== Starting {registry_name} data retrieval ==========")
+    print(f"\n{'='*70}")
+    print(f"Retrieving data from: {registry_name}")
+    print(f"{'='*70}\n")
 
     # Legal Notice
     description = ("You are free to:\n"
@@ -102,11 +111,13 @@ def run_everything(folder=""):
         "registryID": meta_id
     }
 
-    print("", len(raw_dicts), "records retrieved from original source file")
+    logger.info(f"Retrieved {len(raw_dicts):,} records from source")
+    print(f"  Retrieved {len(raw_dicts):,} records from source\n")
     final_results = send_all_to_mongodb(raw_dicts, custom_mapping, static_amendment)
 
     completion_timestamp(meta_id)
-    print("\n ✔ Complete")
+    logger.info(f"✔ {registry_name} data retrieval completed successfully")
+    print("\n✔ Australia import complete\n")
     return final_results
 
 
