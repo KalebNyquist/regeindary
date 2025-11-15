@@ -688,19 +688,15 @@ def get_random_entity(display=False, mongo_filter=None, hard_limit=False):
     return random_entity
 
 
-
-
-
-from dev_utils import measure_time
-
 def get_all_urls(entity_id):
-    # For future implemention -- this is the more "in-depth" path
+    # For future implementation -- this is the more "in-depth" path
     # Possible uses include: -- finding correct URLs if most recent is a dud/typo
     #                        -- using historical/redirect URLs in matching process
     z = mongo_regeindary[filings].find({"entityId_mongo": bson.ObjectId(entity_id)})
     u = set([x['websiteUrl'].lower() for x in z])
     print(u)
     return u
+
 
 def get_most_recent_url(entity_id):
     z = mongo_regeindary[filings].aggregate([
@@ -717,7 +713,6 @@ def get_most_recent_url(entity_id):
             url = None
 
     return url
-
 
 
 def get_entities_that_need_websites(batch_size = False):
@@ -737,10 +732,3 @@ def get_entities_that_need_websites(batch_size = False):
         r = mongo_regeindary[orgs].update_one({"_id" : missing_website_id}, {"$set" : {"websiteUrl" : url}})
 
         missing_websites -= 1
-
-
-
-
-if __name__ == '__main__':
-    get_entities_that_need_websites()
-    #pass
