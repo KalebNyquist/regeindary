@@ -24,8 +24,22 @@ def get_config():
     config_path = os.path.join(os.path.dirname(__file__), 'config.toml')
     config_path = os.path.abspath(config_path)
 
-    with open(config_path, "rb") as cfg:
-        config = tomllib.load(cfg)
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(
+            f"Configuration file not found at: {config_path}\n"
+            f"Please create a config.toml file with MongoDB connection settings.\n"
+            f"See README.md for configuration instructions."
+        )
+
+    try:
+        with open(config_path, "rb") as cfg:
+            config = tomllib.load(cfg)
+    except tomllib.TOMLDecodeError as e:
+        raise ValueError(
+            f"Invalid TOML syntax in config file: {config_path}\n"
+            f"Error: {e}"
+        )
+
     return config
 
 
