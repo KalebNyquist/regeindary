@@ -30,7 +30,7 @@ def retrieve_data(folder):
         response_df = pd.read_csv(response_text, low_memory=False)
         response_df.to_csv(f"{folder}cache.csv")
     else:
-        raise Exception
+        raise Exception(f"Unexpected cache state: cached={cached}. Expected True or False.")
 
     # Structure
     print(f" Step 4 of 4: Structuring data as dicts".ljust(50), end="\n")
