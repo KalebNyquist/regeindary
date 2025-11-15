@@ -115,15 +115,36 @@ def delete_old_records(registry_id, collection='organizations'):
 
 
 def send_all_to_mongodb(records, mapping, static, collection='organizations'):
-    # - [ ] for performance, is there a way to rewrite this as "insert_many" rather than "insert_one"?
-    results = {}
+    # Optimized to use insert_many() for batch insertion instead of looping insert_one()
+    global mongo_regeindary, collections_map
+
+    # Pre-process all records to apply mapping transformations
+    upload_documents = []
     for i, record in enumerate(records, start=1):
         if (i % 100 == 0) or (i == len(records)):
             percentage = "%.2f" % (100 * i/len(records))
-            print(f"\r {i}/{len(records)} ({percentage}%) records processed", end="")
-        result = send_to_mongodb(record, mapping, static, collection)
-        results.update({i: result})
+            print(f"\r {i}/{len(records)} ({percentage}%) records transformed", end="")
 
+        # Apply mapping transformation (same logic as send_to_mongodb)
+        upload_dict = static.copy()
+        for m in mapping.keys():
+            if m in record.keys():
+                upload_dict.update({mapping[m]: record[m]})
+        upload_dict.update({"Original Data": record})
+        upload_documents.append(upload_dict)
+
+    print()  # New line after transformation progress
+
+    # Batch insert all documents at once
+    print(f" Inserting {len(upload_documents)} documents to MongoDB...", end="")
+    result = mongo_regeindary[collections_map[collection]].insert_many(
+        upload_documents,
+        ordered=False  # Continue on error, more resilient for large batches
+    )
+    print(" ✔")
+
+    # Return results in compatible format
+    results = {i+1: result.inserted_ids[i] for i in range(len(result.inserted_ids))}
     return results
 
 

@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-specific cache/data files
+scripts/Australia/*.csv
+scripts/EnglandWales/*.json
+scripts/EnglandWales/*.zip
+scripts/NewZealand/*.csv
+scripts/UnitedStates/*.csv
+scripts/UnitedStates/*.zip
+scripts/UnitedStates/*.json
