@@ -235,6 +235,14 @@ def status_check():
             completion_time = "NOT COMPLETED YET"
         print(completion_time, end="...................")
 
+        n_orgs_in_registry = mongo_regeindary[orgs].count_documents({'registryID': registry['_id']})
+        if n_organizations > 0:
+            fraction = n_orgs_in_registry / n_organizations
+            percentage = round(fraction * 100, 2)
+            percentage = f"{percentage}%"
+        else:
+            percentage = "N/A"
+            
         # Use pre-computed counts from aggregation instead of individual queries
         n_orgs_in_registry = org_counts.get(registry['_id'], 0)
         fraction = n_orgs_in_registry / n_organizations if n_organizations > 0 else 0
