@@ -158,9 +158,9 @@ def meta_check(registry_name, source_url, collection="organizations"):
         decision = delete_old_records(result['_id'], collection)
         return result['_id'], decision
     elif preexisting_registries >= 2:
-        raise Exception("Too many")
+        raise Exception(f"Database integrity error: Found {preexisting_registries} registries with name '{registry_name}'. Expected 0 or 1.")
     else:
-        raise Exception("Something weird")
+        raise Exception(f"Unexpected database state: Registry count for '{registry_name}' is {preexisting_registries}. This should not be possible.")
 
 
 def retrieve_mapping(folder=""):
@@ -331,9 +331,9 @@ def match_filing(filing, matching_field='entityId', auto_create_from_orphan=True
             if manual_decision == "y":
                 entity_id_mongo = create_organization_from_orphan_filing(filing)
             else:
-                raise Exception("No matching orgs found")
+                raise Exception(f"No matching organization found for filing with {matching_field}='{entity_id}' in registry '{registry_id}'. User declined to create orphan organization.")
     elif len(matched_orgs) >= 2:
-        raise Exception
+        raise Exception(f"Database integrity error: Found {len(matched_orgs)} organizations matching {matching_field}='{entity_id}' in registry '{registry_id}'. Expected 0 or 1. Filing ID: {filing.get('_id', 'unknown')}")
     elif len(matched_orgs) == 1:
         [matched_org] = matched_orgs
         entity_id_mongo = matched_org['_id']
