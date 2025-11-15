@@ -7,6 +7,8 @@ a unified database structure.
 import inspect
 import tomllib
 import os
+
+import bson
 import pymongo
 import json
 from datetime import datetime
@@ -603,6 +605,13 @@ def run_all_match_filings(batch_size=False):
         while n_unmatched > 0:
             print(f"\r  {n_unmatched:,} unmatched filings remaining".ljust(50), end="")
             filing = mongo_regeindary[filings].find_one(unmatched_identifier)
+
+            if not filing:
+                print("")
+                logger.info("No unmatched filings found.")
+                print(f"\r  No unmatched filings found.".ljust(50))
+                break
+
             match_filing(filing)
             n_unmatched -= 1
 
@@ -679,5 +688,59 @@ def get_random_entity(display=False, mongo_filter=None, hard_limit=False):
     return random_entity
 
 
+
+
+
+from dev_utils import measure_time
+
+def get_all_urls(entity_id):
+    # For future implemention -- this is the more "in-depth" path
+    # Possible uses include: -- finding correct URLs if most recent is a dud/typo
+    #                        -- using historical/redirect URLs in matching process
+    z = mongo_regeindary[filings].find({"entityId_mongo": bson.ObjectId(entity_id)})
+    u = set([x['websiteUrl'].lower() for x in z])
+    print(u)
+    return u
+
+def get_most_recent_url(entity_id):
+    z = mongo_regeindary[filings].aggregate([
+        {"$match" : {"entityId_mongo": bson.ObjectId(entity_id)}},
+        {"$project" : {"websiteUrl" : 1, 'recordDate' : 1}},
+        {"$sort": {"recordDate": -1}},
+        {"$limit" : 1}
+    ])
+
+    url = None
+    for x in z:
+        url = x['websiteUrl']
+        if type(url) == float:
+            url = None
+
+    return url
+
+
+
+def get_entities_that_need_websites(batch_size = False):
+    print("Counting entities without websiteUrl listed...")
+    missing_websites = mongo_regeindary[orgs].count_documents({"websiteUrl": {"$exists": False}})
+    print(f"{missing_websites:,} entities have not been matched with a websiteUrl (or determined to have no match)")
+
+    if batch_size:
+        missing_websites = batch_size
+    while missing_websites > 0:
+        z = mongo_regeindary[orgs].find_one({"websiteUrl" : {"$exists" : False}})
+        missing_website_id = z['_id']
+        print(f"{missing_websites:,} remaining: mongoId of org without websiteUrl:", missing_website_id, end=" --> ")
+
+        url = get_most_recent_url(missing_website_id)
+        print("Matched URL: ", url)
+        r = mongo_regeindary[orgs].update_one({"_id" : missing_website_id}, {"$set" : {"websiteUrl" : url}})
+
+        missing_websites -= 1
+
+
+
+
 if __name__ == '__main__':
-    pass
+    get_entities_that_need_websites()
+    #pass
