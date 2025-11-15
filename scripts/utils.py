@@ -328,8 +328,21 @@ def status_check():
 
     logger.info(f"Database contains: {n_registries} registries, {n_organizations:,} organizations, {n_filings:,} filings")
     print(f"{n_registries} registries, {n_organizations:,} organizations, and {n_filings:,} filings")
+    # Optimized: Use aggregation pipeline to get counts for all registries in 2 queries instead of 2*N queries
+    print("  Aggregating counts by registry...", end="")
+    org_counts_cursor = mongo_regeindary[orgs].aggregate([
+        {"$group": {"_id": "$registryID", "count": {"$sum": 1}}}
+    ])
+    org_counts = {doc['_id']: doc['count'] for doc in org_counts_cursor}
+
+    filing_counts_cursor = mongo_regeindary[filings].aggregate([
+        {"$group": {"_id": "$registryID", "count": {"$sum": 1}}}
+    ])
+    filing_counts = {doc['_id']: doc['count'] for doc in filing_counts_cursor}
+    print(" ✔")
+
+    print(n_registries, "registries,", n_organizations, "organizations, and", n_filings, "filings")
     for registry in registries:
-        # - [ ] consider replacing with a pipeline
         print(registry['name'].ljust(80, "."), end="")
 
         completion_time = registry.get("download_completion", False)
@@ -340,11 +353,20 @@ def status_check():
         print(completion_time, end="...................")
 
         n_orgs_in_registry = mongo_regeindary[orgs].count_documents({'registryID': registry['_id']})
-        fraction = n_orgs_in_registry / n_organizations
+        if n_organizations > 0:
+            fraction = n_orgs_in_registry / n_organizations
+            percentage = round(fraction * 100, 2)
+            percentage = f"{percentage}%"
+        else:
+            percentage = "N/A"
+            
+        # Use pre-computed counts from aggregation instead of individual queries
+        n_orgs_in_registry = org_counts.get(registry['_id'], 0)
+        fraction = n_orgs_in_registry / n_organizations if n_organizations > 0 else 0
         percentage = round(fraction * 100, 2)
         percentage = f"{percentage}%"
         print(f"{n_orgs_in_registry} orgs ({percentage})".ljust(10), end="")
-        n_filings_in_registry = mongo_regeindary[filings].count_documents({'registryID': registry['_id']})
+        n_filings_in_registry = filing_counts.get(registry['_id'], 0)
         print(f" & {n_filings_in_registry} filings".ljust(30))
 
     total_size = mongo_regeindary.command("dbstats")['totalSize']
