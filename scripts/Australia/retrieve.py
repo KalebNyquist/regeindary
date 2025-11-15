@@ -18,7 +18,6 @@ api_retrieval_point = ("https://data.gov.au/data/dataset/b050b242-4487-4306-abf5
 source_url = 'https://data.gov.au/dataset/ds-dga-b050b242-4487-4306-abf5-07ca073e5594/details?q=acnc'
 headers = {"user-agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0"}
 registry_name = "Australia - ACNC Charity Register"
-global mongo_regeindary
 
 
 # Functions
