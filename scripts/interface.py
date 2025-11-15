@@ -27,22 +27,24 @@ def retrieve_registries():
     Options:
         [1] Australia
         [2] England and Wales
-        [3] New Zealand
-        [4] United States
+        [3] Ireland
+        [4] New Zealand
+        [5] United States
         [A] Run All
         [X] Exit
     """
     retrieval_options = """[1] Australia
 [2] England and Wales
-[3] New Zealand
-[4] United States
+[3] Ireland
+[4] New Zealand
+[5] United States
 [A] Run All
 [X] Exit"""
 
     print(retrieval_options)
 
     selection = input("Choose option(s), comma separate if multiple: ")
-    all_options = [str(x) for x in range(1, 5)] # - [ ] make sure this updates when adding a country
+    all_options = [str(x) for x in range(1, 6)] # - [ ] make sure this updates when adding a country
     if selection == "A":
         selection = all_options
         logger.info(f"Running all registry imports: {selection}")
@@ -67,10 +69,14 @@ def retrieve_registries():
             import scripts.EnglandWales.retrieve as engwal
             engwal.run_everything("EnglandWales/")
         elif s == "3":
+            logger.info("Starting Ireland registry import")
+            import scripts.Ireland.retrieve as ireland
+            ireland.run_everything("Ireland/")
+        elif s == "4":
             logger.info("Starting New Zealand registry import")
             import scripts.NewZealand.retrieve as newzee
             newzee.run_everything("NewZealand/")
-        elif s == "4":
+        elif s == "5":
             logger.info("Starting United States registry import")
             import scripts.UnitedStates.retrieve as ustates
             ustates.run_everything("United States/")
