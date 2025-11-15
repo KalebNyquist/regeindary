@@ -92,7 +92,7 @@ def menu_select():
         elif selection.lower() == "x":
             break
         else:
-            "Invalid selection."
+            print("Invalid selection.")
         print("\n", end="")
 
 
