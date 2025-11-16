@@ -1,0 +1,48 @@
+[
+  {
+    "_comment": "Entity mappings - Update field names after examining actual CSV columns",
+    "origin": "Charity Name",
+    "target": "entityName"
+  },
+  {
+    "origin": "Registered Charity Number",
+    "target": "entityId"
+  },
+  {
+    "origin": "Registration Date",
+    "target": "registeredDate",
+    "format": "YYYY-MM-DD"
+  },
+  {
+    "origin": "Website",
+    "target": "websiteUrl"
+  },
+  {
+    "_comment": "Filing mappings - Update field names after examining actual CSV columns",
+    "origin": "Charity Number",
+    "target": "entityId"
+  },
+  {
+    "origin": "Financial Period Start",
+    "target": "startDate",
+    "format": "YYYY-MM-DD"
+  },
+  {
+    "origin": "Financial Period End",
+    "target": "endDate",
+    "format": "YYYY-MM-DD"
+  },
+  {
+    "origin": "Date Filed",
+    "target": "recordDate",
+    "format": "YYYY-MM-DD"
+  },
+  {
+    "origin": "Total Income",
+    "target": "totalIncome"
+  },
+  {
+    "origin": "Total Expenditure",
+    "target": "totalExpenditures"
+  }
+]
