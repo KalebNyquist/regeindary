@@ -109,6 +109,22 @@ If both fail, you'll see instructions for manual download. To manually download:
 
 **Alternative**: You can also use `curl` or `wget` from the command line if you have cookies from a browser session
 
+### Encoding Issues (UnicodeDecodeError)
+
+**Known Issue**: The CSV files may contain Irish characters (fadas: á, é, í, ó, ú) that use non-UTF-8 encoding.
+
+The `retrieve.py` script automatically tries multiple encodings:
+- UTF-8
+- Latin-1 (ISO-8859-1)
+- Windows-1252 (CP1252)
+
+If you downloaded the file manually and encounter encoding errors:
+- The script will automatically detect and use the correct encoding
+- Files are converted to UTF-8 when saved to cache for consistency
+- If all else fails, the script uses error replacement to handle problematic characters
+
+This is handled automatically - no action required.
+
 ### Field Mapping Issues
 
 After import, use the built-in tools to verify data quality:
