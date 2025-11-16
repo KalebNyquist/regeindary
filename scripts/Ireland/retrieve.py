@@ -44,7 +44,21 @@ def retrieve_data(folder, label):
 
     logger.info(f"Loading CSV data from cache_{label}.csv")
     print(f"  Step 2: Loading CSV data...")
-    response_df = pd.read_csv(f"{folder}cache_{label}.csv", low_memory=False)
+
+    # Try multiple encodings to handle Irish characters (fadas: á, é, í, ó, ú)
+    for encoding in ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']:
+        try:
+            response_df = pd.read_csv(f"{folder}cache_{label}.csv", encoding=encoding, low_memory=False)
+            logger.info(f"Successfully loaded CSV with {encoding} encoding")
+            break
+        except UnicodeDecodeError:
+            logger.debug(f"Failed to load with {encoding} encoding")
+            continue
+    else:
+        # If all encodings fail, use error handling
+        logger.warning("All standard encodings failed, using error handling")
+        response_df = pd.read_csv(f"{folder}cache_{label}.csv", encoding='utf-8',
+                                  encoding_errors='replace', low_memory=False)
 
     logger.info(f"Converting {len(response_df):,} records to dictionary format")
     response_dicts = response_df.to_dict(orient="records")
@@ -73,8 +87,22 @@ def download_csv(folder, label):
     # Try Method 1: Use pandas directly (sometimes bypasses Cloudflare)
     try:
         logger.debug("Attempting download via pandas.read_csv")
-        df = pd.read_csv(api_retrieval_point, storage_options={'User-Agent': headers['user-agent']})
-        df.to_csv(f"{folder}cache_{label}.csv", index=False)
+        # Try multiple encodings for Irish characters
+        df = None
+        for encoding in ['utf-8', 'latin-1', 'iso-8859-1']:
+            try:
+                df = pd.read_csv(api_retrieval_point, encoding=encoding,
+                                storage_options={'User-Agent': headers['user-agent']})
+                logger.debug(f"Downloaded with {encoding} encoding")
+                break
+            except (UnicodeDecodeError, Exception):
+                continue
+
+        if df is None:
+            raise Exception("Could not read CSV with any encoding")
+
+        # Save as UTF-8 for consistency
+        df.to_csv(f"{folder}cache_{label}.csv", index=False, encoding='utf-8')
         logger.info("Download complete via pandas")
         return
     except Exception as e:
