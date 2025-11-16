@@ -1,12 +1,18 @@
 [
   {
     "_comment": "Entity mappings - Update field names after examining actual CSV columns",
-    "origin": "Charity Name",
+    "origin": "Registered Charity Name",
     "target": "entityName"
   },
   {
     "origin": "Registered Charity Number",
-    "target": "entityId"
+    "target": "entityId",
+    "level": "entities"
+  },
+  {
+    "origin": "Registered\nCharity\nNumber (RCN)",
+    "target": "entityId",
+    "level": "filings"
   },
   {
     "origin": "Registration Date",
@@ -23,14 +29,14 @@
     "target": "entityId"
   },
   {
-    "origin": "Financial Period Start",
+    "origin": "Period Start Date",
     "target": "startDate",
-    "format": "YYYY-MM-DD"
+    "format": "MM/DD/YYYY"
   },
   {
-    "origin": "Financial Period End",
+    "origin": "Period End Date",
     "target": "endDate",
-    "format": "YYYY-MM-DD"
+    "format": "MM/DD/YYYY"
   },
   {
     "origin": "Date Filed",
@@ -38,11 +44,11 @@
     "format": "YYYY-MM-DD"
   },
   {
-    "origin": "Total Income",
+    "origin": "Gross Income",
     "target": "totalIncome"
   },
   {
-    "origin": "Total Expenditure",
+    "origin": "Gross Expenditure",
     "target": "totalExpenditures"
   }
 ]

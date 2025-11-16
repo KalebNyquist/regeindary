@@ -281,7 +281,7 @@ def meta_check(registry_name, source_url, collection="organizations"):
         raise Exception(f"Unexpected database state: Registry count for '{registry_name}' is {preexisting_registries}. This should not be possible.")
 
 
-def retrieve_mapping(folder=""):
+def retrieve_mapping(folder="", level=None):
     """Load field mapping from mapping.json file.
 
     Args:
@@ -292,7 +292,10 @@ def retrieve_mapping(folder=""):
     """
     with open(f"{folder}mapping.json", "r") as m:
         mp = json.load(m)
-    mapping = {feature['origin']: feature['target'] for feature in mp}
+    if not level:
+        mapping = {feature['origin']: feature['target'] for feature in mp}
+    if level:
+        mapping = {feature['origin']: feature['target'] for feature in mp if level in feature.get('level', ['entities', 'filings'])}
     return mapping
 
 

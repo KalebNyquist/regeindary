@@ -48,7 +48,7 @@ def retrieve_data(folder, label):
     # Try multiple encodings to handle Irish characters (fadas: á, é, í, ó, ú)
     for encoding in ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']:
         try:
-            response_df = pd.read_csv(f"{folder}/cache_{label}.csv", encoding=encoding, low_memory=False)
+            response_df = pd.read_csv(f"{folder}/cache_{label}.csv", encoding=encoding, low_memory=False, header=1)
             logger.info(f"Successfully loaded CSV with {encoding} encoding")
             break
         except UnicodeDecodeError:
@@ -58,7 +58,7 @@ def retrieve_data(folder, label):
         # If all encodings fail, use error handling
         logger.warning("All standard encodings failed, using error handling")
         response_df = pd.read_csv(f"{folder}/cache_{label}.csv", encoding='utf-8',
-                                  encoding_errors='replace', low_memory=False)
+                                  encoding_errors='replace', low_memory=False, header=1)
 
     logger.info(f"Converting {len(response_df):,} records to dictionary format")
     response_dicts = response_df.to_dict(orient="records")
@@ -92,7 +92,7 @@ def download_csv(folder, label):
         for encoding in ['utf-8', 'latin-1', 'iso-8859-1']:
             try:
                 df = pd.read_csv(api_retrieval_point, encoding=encoding,
-                                storage_options={'User-Agent': headers['user-agent']})
+                                storage_options={'User-Agent': headers['user-agent']}, header=1)
                 logger.debug(f"Downloaded with {encoding} encoding")
                 break
             except (UnicodeDecodeError, Exception):
@@ -200,7 +200,7 @@ def run_everything(folder=""):
     print("Phase 1: Processing Charity Entities")
     print("-" * 70)
     raw_dicts = retrieve_data(folder, label="entities")
-    custom_mapping = retrieve_mapping(folder)
+    custom_mapping = retrieve_mapping(folder, level="entities")
     meta_id, skip = meta_check(registry_name, source_url)
 
     # Upload Data
@@ -222,6 +222,7 @@ def run_everything(folder=""):
     print("Phase 2: Processing Charity Filings (Annual Reports)")
     print("-" * 70)
     raw_dicts = retrieve_data(folder, label="filings")
+    custom_mapping = retrieve_mapping(folder, level="filings")
     meta_id, skip = meta_check(registry_name, source_url, collection="filings")
 
     logger.info(f"Retrieved {len(raw_dicts):,} filing records")
