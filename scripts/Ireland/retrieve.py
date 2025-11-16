@@ -48,7 +48,7 @@ def retrieve_data(folder, label):
     # Try multiple encodings to handle Irish characters (fadas: á, é, í, ó, ú)
     for encoding in ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']:
         try:
-            response_df = pd.read_csv(f"{folder}cache_{label}.csv", encoding=encoding, low_memory=False)
+            response_df = pd.read_csv(f"{folder}/cache_{label}.csv", encoding=encoding, low_memory=False)
             logger.info(f"Successfully loaded CSV with {encoding} encoding")
             break
         except UnicodeDecodeError:
@@ -57,7 +57,7 @@ def retrieve_data(folder, label):
     else:
         # If all encodings fail, use error handling
         logger.warning("All standard encodings failed, using error handling")
-        response_df = pd.read_csv(f"{folder}cache_{label}.csv", encoding='utf-8',
+        response_df = pd.read_csv(f"{folder}/cache_{label}.csv", encoding='utf-8',
                                   encoding_errors='replace', low_memory=False)
 
     logger.info(f"Converting {len(response_df):,} records to dictionary format")
