@@ -87,15 +87,27 @@ Select option `[2] Retrieve Registries`, then choose `[3] Ireland`.
 
 ## Troubleshooting
 
-### Download Errors
+### Download Errors (403 Forbidden / Cloudflare Protection)
 
-If you encounter download errors (e.g., Cloudflare protection), the website may be blocking automated requests. Try:
+**Known Issue**: The Charities Regulator website uses Cloudflare protection which may block automated downloads with a 403 error.
 
-1. Manually download the CSV files from the URLs above
-2. Place them in `/home/user/regeindary/scripts/Ireland/` as:
-   - `cache_entities.csv`
-   - `cache_filings.csv`
-3. Run the import - it will use the cached files
+The `retrieve.py` script attempts two download methods:
+1. **pandas.read_csv** - Sometimes bypasses Cloudflare
+2. **requests with enhanced headers** - Mimics browser behavior
+
+If both fail, you'll see instructions for manual download. To manually download:
+
+1. **Download the CSV files** from your browser:
+   - **Entities**: https://www.charitiesregulator.ie/media/d52jwriz/register-of-charities.csv
+   - **Filings**: https://www.charitiesregulator.ie/media/yeia3rfc/charity-annual-reports.csv
+
+2. **Save them** in `/home/user/regeindary/scripts/Ireland/` as:
+   - `cache_entities.csv` (for the register of charities)
+   - `cache_filings.csv` (for the annual reports)
+
+3. **Re-run the import** - The script will detect and use the cached files
+
+**Alternative**: You can also use `curl` or `wget` from the command line if you have cookies from a browser session
 
 ### Field Mapping Issues
 

@@ -56,27 +56,76 @@ def retrieve_data(folder, label):
 def download_csv(folder, label):
     """Download CSV data from Charities Regulator.
 
+    Attempts to download using pandas (which sometimes bypasses protections),
+    falls back to requests library, and provides manual download instructions if both fail.
+
     Args:
         folder (str): Directory path for cache storage.
         label (str): Dataset type - either "entities" or "filings".
 
     Raises:
-        Exception: If HTTP status code is not 200.
+        Exception: If download fails with helpful instructions for manual download.
     """
     api_retrieval_point = api_retrieval_points[label]
 
     logger.info(f"Downloading from {api_retrieval_point}")
-    response = get(api_retrieval_point, headers=headers)
 
-    if (sc := response.status_code) != 200:
-        logger.error(f"HTTP request failed with status code {sc}")
-        raise Exception(f"Actual Status Code {str(sc)} ≠ Expected Status Code 200")
+    # Try Method 1: Use pandas directly (sometimes bypasses Cloudflare)
+    try:
+        logger.debug("Attempting download via pandas.read_csv")
+        df = pd.read_csv(api_retrieval_point, storage_options={'User-Agent': headers['user-agent']})
+        df.to_csv(f"{folder}cache_{label}.csv", index=False)
+        logger.info("Download complete via pandas")
+        return
+    except Exception as e:
+        logger.debug(f"Pandas download failed: {e}")
+        print(f"  ⚠️  Direct pandas download failed, trying requests library...")
 
-    logger.debug(f"Saving CSV data to cache_{label}.csv")
-    with open(f"{folder}cache_{label}.csv", 'wb') as csv_file:
-        csv_file.write(response.content)
+    # Try Method 2: Use requests with enhanced headers
+    try:
+        enhanced_headers = {
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "accept-language": "en-US,en;q=0.9",
+            "accept-encoding": "gzip, deflate, br",
+            "connection": "keep-alive",
+            "upgrade-insecure-requests": "1",
+            "sec-fetch-dest": "document",
+            "sec-fetch-mode": "navigate",
+            "sec-fetch-site": "none"
+        }
 
-    logger.info("Download complete")
+        logger.debug("Attempting download via requests library")
+        response = get(api_retrieval_point, headers=enhanced_headers, timeout=30)
+
+        if (sc := response.status_code) != 200:
+            logger.error(f"HTTP request failed with status code {sc}")
+            raise Exception(f"Status code {sc}")
+
+        logger.debug(f"Saving CSV data to cache_{label}.csv")
+        with open(f"{folder}cache_{label}.csv", 'wb') as csv_file:
+            csv_file.write(response.content)
+
+        logger.info("Download complete via requests")
+        return
+
+    except Exception as e:
+        logger.error(f"Automated download failed: {e}")
+
+        # Provide manual download instructions
+        print("\n" + "="*70)
+        print("⚠️  AUTOMATED DOWNLOAD FAILED - MANUAL DOWNLOAD REQUIRED")
+        print("="*70)
+        print("\nThe website appears to be blocking automated downloads (likely Cloudflare).")
+        print("\nPlease download the file manually:")
+        print(f"  1. Open this URL in your browser:")
+        print(f"     {api_retrieval_point}")
+        print(f"\n  2. Save the downloaded file as:")
+        print(f"     {os.path.abspath(folder)}cache_{label}.csv")
+        print(f"\n  3. Re-run this script - it will use the cached file")
+        print("="*70 + "\n")
+
+        raise Exception(f"Download failed. Please download manually from: {api_retrieval_point}")
 
 
 def run_everything(folder=""):
