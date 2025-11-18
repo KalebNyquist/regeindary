@@ -102,7 +102,7 @@ def run_everything(folder=""):
     # Download Data
     raw_dicts = retrieve_data(folder)
     custom_mapping = retrieve_mapping(folder)
-    meta_id, _ = meta_check(registry_name, source_url)
+    meta_id, decision = meta_check(registry_name, source_url)
 
     # Upload Data
     static_amendment = {
@@ -113,7 +113,24 @@ def run_everything(folder=""):
 
     logger.info(f"Retrieved {len(raw_dicts):,} records from source")
     print(f"  Retrieved {len(raw_dicts):,} records from source\n")
-    final_results = send_all_to_mongodb(raw_dicts, custom_mapping, static_amendment)
+
+    # Handle different upload strategies based on user decision
+    if decision == 's':
+        logger.info("User chose to skip upload")
+        print("✔ Upload skipped by user\n")
+        return {}
+    elif decision == 'i':
+        logger.info("User chose incremental update - inserting only new records")
+        final_results = send_new_to_mongodb(
+            raw_dicts,
+            custom_mapping,
+            static_amendment,
+            collection='organizations',
+            unique_field='entityId'
+        )
+    else:
+        # decision is 'y', 'n', or 0 (no existing records) - use normal batch insert
+        final_results = send_all_to_mongodb(raw_dicts, custom_mapping, static_amendment)
 
     completion_timestamp(meta_id)
     logger.info(f"✔ {registry_name} data retrieval completed successfully")

@@ -136,14 +136,15 @@ def check_for_cache(folder="", label="", suffix="csv"):
 
 
 def delete_old_records(registry_id, collection='organizations'):
-    """Check for existing records and prompt user to delete them.
+    """Check for existing records and prompt user to delete them or use incremental update.
 
     Args:
         registry_id (ObjectId): MongoDB ObjectId of the registry.
         collection (str): Collection name ('organizations' or 'filings'). Defaults to 'organizations'.
 
     Returns:
-        str or int: 'y' if records deleted, 'n' or 's' if skipped, or 0 if no records exist.
+        str or int: 'y' if records deleted, 'n' if skipped, 's' to skip upload,
+                    'i' for incremental update, or 0 if no records exist.
     """
     global mongo_regeindary, collections_map
 
@@ -153,13 +154,18 @@ def delete_old_records(registry_id, collection='organizations'):
         delete_option = None
         option = None
         while delete_option is None:
-            option = input(" Delete old records? (y/n, or s to skip upload) ")
-            if option.lower() == "y":
+            print(f" Found {record_count:,} existing records. Choose an option:")
+            print("   [y] Delete all old records and insert new data")
+            print("   [i] Incremental update (insert only new records)")
+            print("   [n] Keep old records (may cause duplicate errors)")
+            print("   [s] Skip upload entirely")
+            option = input(" Your choice: ").lower().strip()
+            if option == "y":
                 delete_option = True
-            elif (option.lower() == "n") or (option.lower() == "s"):
+            elif option in ["n", "s", "i"]:
                 delete_option = False
             else:
-                print(" Invalid option. Select 'y', 'n', or 's'.")
+                print(" Invalid option. Select 'y', 'i', 'n', or 's'.")
         if delete_option:
             logger.warning(f"Deleting {record_count:,} existing records from '{collection}' collection")
             mongo_regeindary[collections_map[collection]].delete_many({"registryID": registry_id})
@@ -240,6 +246,239 @@ def send_to_mongodb(record, mapping, static, collection):
     result = mongo_regeindary[collections_map[collection]].insert_one(upload_dict)
 
     return result
+
+
+def preview_new_records(records, mapping, static, collection='organizations', unique_field='entityId'):
+    """Analyze incoming records to identify new vs existing records before insertion.
+
+    Compares incoming records with existing MongoDB records to determine which are new.
+    For organizations, typically use unique_field='entityId'.
+    For filings, typically use unique_field='filingId' or 'filingIndex'.
+
+    Args:
+        records (list): List of record dictionaries to analyze.
+        mapping (dict): Field mapping dictionary (origin field -> target field).
+        static (dict): Static fields (must include registryID).
+        collection (str): Target collection name. Defaults to 'organizations'.
+        unique_field (str): Field name to use for uniqueness detection. Defaults to 'entityId'.
+
+    Returns:
+        tuple: (new_records, duplicate_records, new_indices, duplicate_indices)
+            - new_records (list): Records that don't exist in MongoDB
+            - duplicate_records (list): Records that already exist in MongoDB
+            - new_indices (list): Indices of new records in original list
+            - duplicate_indices (list): Indices of duplicate records in original list
+    """
+    global mongo_regeindary, collections_map
+
+    registry_id = static.get('registryID')
+    if not registry_id:
+        raise ValueError("static dict must contain 'registryID' for duplicate detection")
+
+    logger.info(f"Analyzing {len(records):,} records for duplicates in '{collection}' collection")
+    print(f"\nAnalyzing new data...")
+    print(f"  ✔ Found {len(records):,} records in source data")
+
+    # Get all existing unique field values for this registry
+    existing_count = mongo_regeindary[collections_map[collection]].count_documents({"registryID": registry_id})
+    print(f"  ✔ Found {existing_count:,} existing records in MongoDB for this registry")
+
+    # Build set of existing IDs for fast lookup
+    print(f"  Fetching existing {unique_field} values...", end="")
+    existing_ids = set()
+    cursor = mongo_regeindary[collections_map[collection]].find(
+        {"registryID": registry_id},
+        {unique_field: 1, "_id": 0}
+    )
+    for doc in cursor:
+        if unique_field in doc:
+            existing_ids.add(str(doc[unique_field]))
+    print(" ✔")
+
+    # Categorize incoming records
+    print(f"  Categorizing records...", end="")
+    new_records = []
+    duplicate_records = []
+    new_indices = []
+    duplicate_indices = []
+
+    # Find the origin field that maps to the unique field
+    origin_field = None
+    for origin, target in mapping.items():
+        if target == unique_field:
+            origin_field = origin
+            break
+
+    if not origin_field:
+        # unique_field might be in static fields or not mapped
+        logger.warning(f"Could not find mapping for unique_field '{unique_field}' - trying direct field access")
+        origin_field = unique_field
+
+    for i, record in enumerate(records):
+        record_id = str(record.get(origin_field, ""))
+        if record_id and record_id in existing_ids:
+            duplicate_records.append(record)
+            duplicate_indices.append(i)
+        else:
+            new_records.append(record)
+            new_indices.append(i)
+
+    print(" ✔")
+
+    # Display results
+    print("\n" + "="*70)
+    print("PREVIEW RESULTS".center(70))
+    print("="*70)
+    print(f"  • {len(new_records):,} new records (not in database)")
+    print(f"  • {len(duplicate_records):,} duplicate records (already exist)")
+    print("="*70 + "\n")
+
+    logger.info(f"Preview complete: {len(new_records):,} new, {len(duplicate_records):,} duplicates")
+
+    return new_records, duplicate_records, new_indices, duplicate_indices
+
+
+def send_new_to_mongodb(records, mapping, static, collection='organizations', unique_field='entityId'):
+    """Upload only new records to MongoDB, skipping duplicates.
+
+    First previews records to identify new vs existing, then prompts user for action.
+    Only inserts records that don't already exist in the database.
+
+    Args:
+        records (list): List of record dictionaries to upload.
+        mapping (dict): Field mapping dictionary (origin field -> target field).
+        static (dict): Static fields to add to every record (must include registryID).
+        collection (str): Target collection name. Defaults to 'organizations'.
+        unique_field (str): Field name to use for uniqueness detection. Defaults to 'entityId'.
+
+    Returns:
+        dict: Dictionary mapping record index (1-based) to MongoDB ObjectIds for inserted records.
+    """
+    global mongo_regeindary, collections_map
+
+    # Preview records
+    new_records, duplicate_records, new_indices, duplicate_indices = preview_new_records(
+        records, mapping, static, collection, unique_field
+    )
+
+    if len(new_records) == 0:
+        print("✔ No new records to insert (all records already exist)")
+        logger.info("No new records to insert")
+        return {}
+
+    # Prompt user for action
+    print("What would you like to do?")
+    print("  [1] Insert only new records (skip duplicates)")
+    print("  [2] Show sample of new records")
+    print("  [3] Cancel operation")
+
+    while True:
+        choice = input("\nSelect option (1-3): ").strip()
+
+        if choice == "1":
+            # Insert new records only
+            logger.info(f"User selected: Insert {len(new_records):,} new records")
+            return send_all_to_mongodb(new_records, mapping, static, collection)
+
+        elif choice == "2":
+            # Show sample
+            sample_size = min(5, len(new_records))
+            print(f"\nShowing {sample_size} sample new records:")
+            print("-" * 70)
+            for i in range(sample_size):
+                print(f"\nRecord {i+1}:")
+                pp(new_records[i])
+            print("-" * 70)
+            # Loop back to menu
+            print("\nWhat would you like to do?")
+            print("  [1] Insert only new records (skip duplicates)")
+            print("  [2] Show sample of new records")
+            print("  [3] Cancel operation")
+
+        elif choice == "3":
+            logger.info("User cancelled operation")
+            print("✔ Operation cancelled")
+            return {}
+
+        else:
+            print("Invalid option. Please select 1, 2, or 3.")
+
+
+def upsert_all_to_mongodb(records, mapping, static, collection='organizations', unique_field='entityId'):
+    """Update existing records and insert new ones (upsert operation).
+
+    For each record, updates it if it exists (based on registryID + unique_field),
+    or inserts it if it doesn't exist.
+
+    Args:
+        records (list): List of record dictionaries to upsert.
+        mapping (dict): Field mapping dictionary (origin field -> target field).
+        static (dict): Static fields to add to every record (must include registryID).
+        collection (str): Target collection name. Defaults to 'organizations'.
+        unique_field (str): Field name to use for matching. Defaults to 'entityId'.
+
+    Returns:
+        dict: Dictionary with counts of modified, inserted, and total operations.
+    """
+    global mongo_regeindary, collections_map
+
+    registry_id = static.get('registryID')
+    if not registry_id:
+        raise ValueError("static dict must contain 'registryID' for upsert operation")
+
+    # Find the origin field that maps to the unique field
+    origin_field = None
+    for origin, target in mapping.items():
+        if target == unique_field:
+            origin_field = origin
+            break
+
+    if not origin_field:
+        logger.warning(f"Could not find mapping for unique_field '{unique_field}' - trying direct field access")
+        origin_field = unique_field
+
+    logger.info(f"Upserting {len(records):,} records to '{collection}' collection")
+    print(f"\nUpserting {len(records):,} records...")
+
+    modified_count = 0
+    inserted_count = 0
+
+    for i, record in enumerate(records, start=1):
+        if (i % 100 == 0) or (i == len(records)):
+            percentage = "%.2f" % (100 * i/len(records))
+            print(f"\r  Processed {i:,}/{len(records):,} ({percentage}%) records", end="")
+
+        # Apply mapping transformation
+        upload_dict = static.copy()
+        for m in mapping.keys():
+            if m in record.keys():
+                upload_dict.update({mapping[m]: record[m]})
+        upload_dict.update({"Original Data": record})
+
+        # Get unique identifier value
+        unique_value = str(record.get(origin_field, ""))
+
+        # Upsert operation
+        result = mongo_regeindary[collections_map[collection]].update_one(
+            {"registryID": registry_id, unique_field: unique_value},
+            {"$set": upload_dict},
+            upsert=True
+        )
+
+        if result.matched_count > 0:
+            modified_count += 1
+        elif result.upserted_id:
+            inserted_count += 1
+
+    print()  # New line after progress
+    logger.info(f"✔ Upsert complete: {inserted_count:,} inserted, {modified_count:,} updated")
+    print(f"✔ Upsert complete: {inserted_count:,} new records inserted, {modified_count:,} existing records updated")
+
+    return {
+        "inserted": inserted_count,
+        "modified": modified_count,
+        "total": len(records)
+    }
 
 
 def meta_check(registry_name, source_url, collection="organizations"):

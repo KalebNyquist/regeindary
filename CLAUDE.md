@@ -338,6 +338,12 @@ MongoDB Collections: registries, organizations, filings
 - `meta_check(name, source)` - Get/create registry metadata
 - `completion_timestamp(meta_id)` - Mark import complete
 
+### Incremental Update Operations (NEW)
+- `preview_new_records(records, mapping, static, collection, unique_field)` - Analyze incoming records to identify new vs existing
+- `send_new_to_mongodb(records, mapping, static, collection, unique_field)` - Insert only new records, skip duplicates
+- `upsert_all_to_mongodb(records, mapping, static, collection, unique_field)` - Update existing + insert new records
+- `delete_old_records(registry_id, collection)` - Now supports incremental update option
+
 ### Entity-Filing Matching
 - `match_filing(filing, collection)` - Link filing to organization
 - `run_all_match_filings()` - Process all unmatched filings (optimized for 500k+ records)
@@ -493,6 +499,85 @@ def run_everything(folder):
 2. **Update mapping**: Add/modify field mappings
 3. **Re-import data**: Run retrieve option, allow overwrite
 4. **Verify**: Use status_check() and get_random_entity()
+
+### Incremental Updates (Annual Registry Updates) ⭐ NEW
+
+**Use Case**: Adding new records from annual registry releases without losing old data
+
+When you run a retrieval and existing records are found, you'll see:
+```
+Found 10,234 existing records. Choose an option:
+  [y] Delete all old records and insert new data
+  [i] Incremental update (insert only new records)
+  [n] Keep old records (may cause duplicate errors)
+  [s] Skip upload entirely
+```
+
+#### Option [i]: Incremental Update Workflow
+
+1. **Preview Phase**: System analyzes incoming data
+   ```
+   Analyzing new data...
+     ✔ Found 10,500 records in source data
+     ✔ Found 10,234 existing records in MongoDB
+     ✔ Categorizing records... ✔
+
+   ======================================================================
+                            PREVIEW RESULTS
+   ======================================================================
+     • 266 new records (not in database)
+     • 10,234 duplicate records (already exist)
+   ======================================================================
+   ```
+
+2. **Action Menu**:
+   ```
+   What would you like to do?
+     [1] Insert only new records (skip duplicates)
+     [2] Show sample of new records
+     [3] Cancel operation
+   ```
+
+3. **Insert**: Only new records are added to MongoDB (old records preserved)
+
+#### How Duplicate Detection Works
+
+- **Organizations**: Matched on `(registryID, entityId)`
+- **Filings**: Matched on `(registryID, filingId)` or `(registryID, filingIndex)`
+- Existing records remain unchanged
+- Only truly new records are inserted
+
+#### Example: Australia Registry Update
+
+```python
+def run_everything(folder=""):
+    data = retrieve_data(folder)
+    mapping = retrieve_mapping(folder)
+    meta_id, decision = meta_check(registry_name, source_url)
+
+    static = {"registryID": meta_id, "registryName": registry_name}
+
+    if decision == 'i':  # Incremental update
+        send_new_to_mongodb(data, mapping, static,
+                           collection='organizations',
+                           unique_field='entityId')
+    # ... other options
+```
+
+#### Advanced: Upsert Mode (Not in UI Yet)
+
+For updating existing records + inserting new ones:
+```python
+upsert_all_to_mongodb(data, mapping, static,
+                     collection='organizations',
+                     unique_field='entityId')
+```
+
+**Benefits**:
+- ✅ No data loss (old records preserved)
+- ✅ Efficient (only insert what's new)
+- ✅ Transparent (preview before committing)
+- ✅ Safe (cancel anytime before insertion)
 
 ### Matching Filings to Organizations
 
@@ -713,3 +798,4 @@ python interface.py
 **Last Updated**: 2025-11-18
 **Codebase Size**: ~1,300 lines of Python
 **Registries Supported**: 4 (Australia, England & Wales, New Zealand, United States)
+**New Features**: Incremental updates for annual registry releases
