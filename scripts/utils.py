@@ -381,13 +381,20 @@ def send_new_to_mongodb(records, mapping, static, collection='organizations', un
             return send_all_to_mongodb(new_records, mapping, static, collection)
 
         elif choice == "2":
-            # Show sample
+            # Show sample in MongoDB format (after mapping applied)
             sample_size = min(5, len(new_records))
-            print(f"\nShowing {sample_size} sample new records:")
+            print(f"\nShowing {sample_size} sample new records (as they'll appear in MongoDB):")
             print("-" * 70)
             for i in range(sample_size):
+                # Apply mapping transformation to show how it will look in MongoDB
+                upload_dict = static.copy()
+                for m in mapping.keys():
+                    if m in new_records[i].keys():
+                        upload_dict.update({mapping[m]: new_records[i][m]})
+                upload_dict.update({"Original Data": new_records[i]})
+
                 print(f"\nRecord {i+1}:")
-                pp(new_records[i])
+                pp(upload_dict)
             print("-" * 70)
             # Loop back to menu
             print("\nWhat would you like to do?")
