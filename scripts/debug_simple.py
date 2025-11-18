@@ -33,8 +33,8 @@ else:
 # Count existing records
 print("\n2. Existing Records Count:")
 count_by_id = orgs.count_documents({"registryID": registry_id})
-count_by_name = orgs.count_documents({"registryName": "Australia - ACNC Charity Register"})
 print(f"   By registryID: {count_by_id:,}")
+count_by_name = orgs.count_documents({"registryName": "Australia - ACNC Charity Register"})
 print(f"   By registryName: {count_by_name:,}")
 
 if count_by_id == 0:

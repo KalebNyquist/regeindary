@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # Globals
 api_retrieval_point = ("https://data.gov.au/data/dataset/b050b242-4487-4306-abf5-07ca073e5594/resource/8fb32972-24e9"
                        "-4c95-885e-7140be51be8a/download/datadotgov_main.csv")
-source_url = 'https://data.gov.au/dataset/ds-dga-b050b242-4487-4306-abf5-07ca073e5594/details?q=acnc'
+source_url = 'https://data.gov.au/data/en/dataset/acnc-register'
 headers = {"user-agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0"}
 registry_name = "Australia - ACNC Charity Register"
 
