@@ -2,6 +2,7 @@
 import pymongo
 import tomllib
 import os
+from datetime import datetime
 
 # Load config
 config_path = os.path.join(os.path.dirname(__file__), 'config.toml')
@@ -15,8 +16,16 @@ orgs = db[config['organization_collection']]
 meta_col = db[config['meta_collection']]
 
 print("=" * 70)
-print("MONGODB STATE CHECK")
+print("MONGODB STATE CHECK (OPTIMIZED)")
 print("=" * 70)
+
+# Create indexes for fast queries
+print("\n0. Creating indexes for fast queries...")
+start = datetime.now()
+orgs.create_index([("registryID", pymongo.ASCENDING)])
+orgs.create_index([("registryID", pymongo.ASCENDING), ("entityId", pymongo.ASCENDING)])
+elapsed = (datetime.now() - start).total_seconds()
+print(f"   ✔ Indexes created/verified in {elapsed:.2f}s")
 
 # Get registry metadata
 print("\n1. Registry Metadata:")
@@ -30,11 +39,14 @@ else:
     print("   ❌ NOT FOUND!")
     exit(1)
 
-# Count existing records
+# Count existing records (with index hints for speed)
 print("\n2. Existing Records Count:")
-count_by_id = orgs.count_documents({"registryID": registry_id})
+start = datetime.now()
+count_by_id = orgs.count_documents({"registryID": registry_id}, hint="registryID_1")
+elapsed = (datetime.now() - start).total_seconds()
+print(f"   By registryID: {count_by_id:,} ({elapsed:.2f}s)")
+
 count_by_name = orgs.count_documents({"registryName": "Australia - ACNC Charity Register"})
-print(f"   By registryID: {count_by_id:,}")
 print(f"   By registryName: {count_by_name:,}")
 
 if count_by_id == 0:
