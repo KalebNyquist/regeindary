@@ -10,6 +10,214 @@
 
 ---
 
+## MongoDB Model Interdependency with Nipwiss
+
+### Overview
+
+**Critical**: Regeindary's MongoDB database serves as a **shared data contract** between Regeindary and [Nipwiss](https://github.com/KalebNyquist/nipwiss) (a private repository for non-profit web scraping and data aggregation).
+
+**Relationship**:
+- **Regeindary**: Data ingestion layer - imports and standardizes registry data
+- **Nipwiss**: Data consumption layer - uses the standardized MongoDB for web scraping and analysis
+- **MongoDB**: Shared interface - acts as a versioned API contract between the two systems
+
+### Critical Architectural Constraints
+
+Because Nipwiss depends on Regeindary's MongoDB schema, the following are **breaking change considerations**:
+
+#### 1. Collection Structure (CRITICAL)
+The three-collection model is foundational to Nipwiss:
+- `registries` - Registry metadata and import tracking
+- `organizations` - Standardized entity records
+- `filings` - Annual reports and financial data
+
+**⚠️ Do not rename or restructure these collections without coordinating with Nipwiss**
+
+#### 2. Required Field Names (CRITICAL)
+These camelCase field names form the data contract and **must remain stable**:
+
+**organizations collection**:
+- `entityId` - Public registry identifier
+- `entityName` - Organization name
+- `entityIndex` - Internal unique identifier
+- `registryID` - MongoDB ObjectId linking to registries collection
+- `registryName` - Human-readable registry name
+- `websiteUrl` - Official organization URL
+- `registeredDate` - Date entered into registry
+- `establishedDate` - Date organization was founded
+
+**filings collection**:
+- `filingId` - Public filing identifier
+- `entityId` - Links to parent organization
+- `entityId_mongo` - MongoDB ObjectId after matching (populated by `match_filing()`)
+- `registryID` - MongoDB ObjectId linking to registries collection
+- `startDate` - Fiscal period start
+- `endDate` - Fiscal period end
+- `recordDate` - Filing submission date
+- `totalIncome` - Financial data
+- `totalExpenditures` - Financial data
+
+**registries collection**:
+- `_id` - MongoDB ObjectId (referenced as `registryID` in other collections)
+- `name` - Registry name (referenced as `registryName` in other collections)
+- `source` - Data source URL
+- `download_completion` - Import timestamp
+
+#### 3. Data Type Contracts (CRITICAL)
+- **Dates**: ISO 8601 strings (YYYY-MM-DD) - not Date objects
+- **Numbers**: Numeric types (int/float) - no currency symbols or strings
+- **IDs**: String type - various formats per registry
+- **URLs**: Full HTTP/HTTPS strings
+- **ObjectIds**: MongoDB ObjectId type for `_id`, `registryID`, `entityId_mongo`
+
+#### 4. Field Naming Conventions (CRITICAL)
+- **Schema fields**: `camelCase` (e.g., `entityId`, `entityName`)
+- **Collection names**: `lowercase_plural` (e.g., `organizations`, `filings`)
+- **Metadata fields**: `snake_case` (e.g., `download_completion`, `Original Data`)
+
+#### 5. Entity-Filing Relationship (CRITICAL)
+The relationship created by `match_filing()` and `run_all_match_filings()` is essential:
+- Filings must link to organizations via `entityId_mongo` field
+- This field is populated after matching process completes
+- Orphan filings auto-create placeholder organizations
+- Relationship enables Nipwiss to traverse entity → filings
+
+### Safe vs Breaking Changes
+
+#### ✅ Safe Changes (Non-Breaking)
+- **Adding new fields** to existing documents (Nipwiss will ignore unknown fields)
+- **Adding new mappings** in mapping.json files
+- **Adding new registries** (new data sources)
+- **Performance optimizations** to utils.py functions
+- **Adding indexes** for query performance
+- **Enriching "Original Data"** nested object
+- **Adding new schemas** (e.g., `people.json`)
+
+#### ⚠️ Breaking Changes (Require Nipwiss Coordination)
+- **Renaming existing fields** (e.g., `entityId` → `organizationId`)
+- **Changing data types** (e.g., date strings → Date objects)
+- **Removing fields** that Nipwiss depends on
+- **Restructuring collections** (e.g., merging organizations + filings)
+- **Changing collection names** (e.g., `organizations` → `entities`)
+- **Modifying `entityId_mongo` relationship** structure
+- **Changing date format** from ISO 8601 strings
+
+### Versioning Strategy
+
+Currently there is **no formal schema versioning**. When making changes:
+
+1. **Before breaking changes**:
+   - Document the change in this CLAUDE.md file
+   - Consider impact on Nipwiss data queries
+   - Coordinate with Nipwiss development
+   - Test both systems with the change
+
+2. **Migration path** (if needed):
+   - Maintain old fields during transition period
+   - Add new fields alongside old ones
+   - Deprecate rather than delete
+   - Use `Original Data` for fallback values
+
+3. **Future consideration**: Add schema version field to documents
+   ```python
+   {
+       "_schema_version": "1.0",
+       "entityId": "...",
+       # ... rest of fields
+   }
+   ```
+
+### Testing Impact on Nipwiss
+
+When modifying Regeindary's MongoDB model:
+
+#### Required Tests
+1. **Field presence**: Ensure all critical fields still exist
+2. **Data type validation**: Verify types match contract (strings, numbers, etc.)
+3. **Relationship integrity**: Test entity-filing links via `entityId_mongo`
+4. **Collection queries**: Verify queries still return expected structure
+5. **Index performance**: Ensure indexes support common Nipwiss queries
+
+#### Testing Workflow
+1. Run Regeindary import with changes
+2. Use `status_check()` to verify data completeness
+3. Use `get_random_entity()` to inspect field structure
+4. Query MongoDB directly to verify schema:
+   ```javascript
+   // In MongoDB shell
+   db.organizations.findOne()
+   db.filings.findOne()
+   db.registries.findOne()
+   ```
+5. Test Nipwiss queries against updated database
+6. Verify no missing fields or type errors in Nipwiss
+
+### Documentation Requirements
+
+When making schema changes, update:
+1. **This section** of CLAUDE.md - Document what changed and why
+2. **schemas/*.json** - Update JSON Schema definitions
+3. **mapping.json files** - Update field mappings if needed
+4. **Nipwiss documentation** - Coordinate updates to Nipwiss CLAUDE.md if breaking changes
+5. **Git commit messages** - Clearly indicate schema changes
+
+### Key Indexes Used by Nipwiss
+
+These indexes are created by Regeindary and relied upon by Nipwiss:
+
+**organizations collection**:
+- `(registryID, entityId)` - Primary lookup index
+- `(registryID, entityIndex)` - Alternative lookup (more reliable for some registries)
+
+**filings collection**:
+- `(registryID, entityId)` - Links filings to organizations
+- `entityId_mongo` - Traverses to matched organization
+
+**Performance note**: These indexes are critical for Nipwiss query performance at scale (500k+ records).
+
+### Shared Schemas as Contract
+
+The JSON Schema files in `/schemas` directory serve as the formal contract:
+- **schemas/entity.json** - Defines valid organization fields
+- **schemas/filing.json** - Defines valid filing fields
+
+**Best practice**: When adding new standardized fields:
+1. Update the JSON Schema first
+2. Update mapping.json files to use new fields
+3. Test with sample data
+4. Document in both Regeindary and Nipwiss CLAUDE.md files
+
+### AI Assistant Guidelines for Schema Changes
+
+When working on Regeindary and considering schema changes:
+
+#### Always Ask
+- "Will this change affect how Nipwiss queries the data?"
+- "Are we renaming or removing any existing fields?"
+- "Are we changing the data type of existing fields?"
+- "Does this affect the entity-filing relationship?"
+
+#### Before Implementing
+- Check if change is breaking vs. non-breaking (see lists above)
+- Review current schema in `schemas/*.json`
+- Check how field is used in `mapping.json` files
+- Consider backwards compatibility
+
+#### When Adding Features
+- Prefer additive changes (new fields) over modifications (renamed fields)
+- Document new fields in JSON Schema
+- Add to mapping.json for relevant registries
+- Update this section of CLAUDE.md
+
+#### Red Flags (Breaking Changes)
+- Renaming camelCase schema fields
+- Changing collection names
+- Modifying relationship structure (`entityId_mongo`)
+- Changing date/number formats
+- Removing fields used in schemas
+
+---
+
 ## Architecture & Data Flow
 
 ### High-Level Flow
@@ -502,6 +710,6 @@ python interface.py
 
 ---
 
-**Last Updated**: 2025-11-15
+**Last Updated**: 2025-11-18
 **Codebase Size**: ~1,300 lines of Python
 **Registries Supported**: 4 (Australia, England & Wales, New Zealand, United States)
