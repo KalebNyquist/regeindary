@@ -279,21 +279,30 @@ def preview_new_records(records, mapping, static, collection='organizations', un
     print(f"\nAnalyzing new data...")
     print(f"  ✔ Found {len(records):,} records in source data")
 
-    # Get all existing unique field values for this registry
-    existing_count = mongo_regeindary[collections_map[collection]].count_documents({"registryID": registry_id})
+    # Create indexes for fast duplicate detection
+    logger.debug("Creating indexes for duplicate detection")
+    mongo_regeindary[collections_map[collection]].create_index([("registryID", pymongo.ASCENDING)])
+    mongo_regeindary[collections_map[collection]].create_index([("registryID", pymongo.ASCENDING), (unique_field, pymongo.ASCENDING)])
+
+    # Get all existing unique field values for this registry (with index hint for speed)
+    existing_count = mongo_regeindary[collections_map[collection]].count_documents(
+        {"registryID": registry_id},
+        hint="registryID_1"
+    )
     print(f"  ✔ Found {existing_count:,} existing records in MongoDB for this registry")
 
-    # Build set of existing IDs for fast lookup
+    # Build set of existing IDs for fast lookup (using index for speed)
     print(f"  Fetching existing {unique_field} values...", end="")
     existing_ids = set()
     cursor = mongo_regeindary[collections_map[collection]].find(
         {"registryID": registry_id},
         {unique_field: 1, "_id": 0}
-    )
+    ).hint("registryID_1")
+
     for doc in cursor:
         if unique_field in doc:
             existing_ids.add(str(doc[unique_field]))
-    print(" ✔")
+    print(f" ✔ ({len(existing_ids):,} unique IDs)")
 
     # Categorize incoming records
     print(f"  Categorizing records...", end="")
