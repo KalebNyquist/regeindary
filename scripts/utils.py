@@ -144,7 +144,7 @@ def delete_old_records(registry_id, collection='organizations'):
 
     Returns:
         str or int: 'y' if records deleted, 'n' if skipped, 's' to skip upload,
-                    'i' for incremental update, or 0 if no records exist.
+                    'i' for incremental update, 'u' for refresh/update, or 0 if no records exist.
     """
     global mongo_regeindary, collections_map
 
@@ -157,15 +157,16 @@ def delete_old_records(registry_id, collection='organizations'):
             print(f" Found {record_count:,} existing records. Choose an option:")
             print("   [y] Delete all old records and insert new data")
             print("   [i] Incremental update (insert only new records)")
+            print("   [u] Refresh/update all records (preserves MongoDB _id)")
             print("   [n] Keep old records (may cause duplicate errors)")
             print("   [s] Skip upload entirely")
             option = input(" Your choice: ").lower().strip()
             if option == "y":
                 delete_option = True
-            elif option in ["n", "s", "i"]:
+            elif option in ["n", "s", "i", "u"]:
                 delete_option = False
             else:
-                print(" Invalid option. Select 'y', 'i', 'n', or 's'.")
+                print(" Invalid option. Select 'y', 'i', 'u', 'n', or 's'.")
         if delete_option:
             logger.warning(f"Deleting {record_count:,} existing records from '{collection}' collection")
             mongo_regeindary[collections_map[collection]].delete_many({"registryID": registry_id})
@@ -489,6 +490,176 @@ def upsert_all_to_mongodb(records, mapping, static, collection='organizations', 
     print()  # New line after progress
     logger.info(f"✔ Upsert complete: {inserted_count:,} inserted, {modified_count:,} updated")
     print(f"✔ Upsert complete: {inserted_count:,} new records inserted, {modified_count:,} existing records updated")
+
+    return {
+        "inserted": inserted_count,
+        "modified": modified_count,
+        "total": len(records)
+    }
+
+
+def refresh_all_to_mongodb(records, mapping, static, collection='organizations', unique_field='entityId'):
+    """Refresh all records: update existing (preserving _id) and insert new ones.
+
+    Uses bulk operations for speed. This is ideal when you want to replace data
+    with a fresh export while preserving MongoDB _id values for downstream systems
+    (like NIPWISS) that reference them.
+
+    Args:
+        records (list): List of record dictionaries to refresh.
+        mapping (dict): Field mapping dictionary (origin field -> target field).
+        static (dict): Static fields to add to every record (must include registryID).
+        collection (str): Target collection name. Defaults to 'organizations'.
+        unique_field (str): Field name to use for matching. Defaults to 'entityId'.
+
+    Returns:
+        dict: Dictionary with counts of modified, inserted, and total operations.
+    """
+    from pymongo import UpdateOne
+
+    global mongo_regeindary, collections_map
+
+    registry_id = static.get('registryID')
+    if not registry_id:
+        raise ValueError("static dict must contain 'registryID' for refresh operation")
+
+    # Create indexes for fast lookups
+    logger.debug("Creating indexes for refresh operation")
+    mongo_regeindary[collections_map[collection]].create_index([("registryID", pymongo.ASCENDING)])
+    mongo_regeindary[collections_map[collection]].create_index([("registryID", pymongo.ASCENDING), (unique_field, pymongo.ASCENDING)])
+
+    # Find the origin field that maps to the unique field
+    origin_field = None
+    for origin, target in mapping.items():
+        if target == unique_field:
+            origin_field = origin
+            break
+
+    if not origin_field:
+        logger.warning(f"Could not find mapping for unique_field '{unique_field}' - trying direct field access")
+        origin_field = unique_field
+
+    # Get existing records to show preview
+    print(f"\nAnalyzing records for refresh...")
+    existing_count = mongo_regeindary[collections_map[collection]].count_documents(
+        {"registryID": registry_id},
+        hint="registryID_1"
+    )
+
+    # Build set of existing IDs for preview
+    print(f"  Fetching existing {unique_field} values...", end="")
+    existing_ids = set()
+    cursor = mongo_regeindary[collections_map[collection]].find(
+        {"registryID": registry_id},
+        {unique_field: 1, "_id": 0}
+    ).hint("registryID_1")
+
+    for doc in cursor:
+        if unique_field in doc:
+            existing_ids.add(str(doc[unique_field]))
+    print(f" ✔ ({len(existing_ids):,} existing)")
+
+    # Count new vs updates
+    update_count = 0
+    insert_count = 0
+    for record in records:
+        record_id = str(record.get(origin_field, ""))
+        if record_id and record_id in existing_ids:
+            update_count += 1
+        else:
+            insert_count += 1
+
+    # Show preview
+    print("\n" + "="*70)
+    print("REFRESH PREVIEW".center(70))
+    print("="*70)
+    print(f"  • {update_count:,} records will be UPDATED (preserving MongoDB _id)")
+    print(f"  • {insert_count:,} records will be INSERTED (new _id created)")
+    print(f"  • {len(records):,} total records in source data")
+    print("="*70 + "\n")
+
+    # Prompt user
+    print("What would you like to do?")
+    print("  [1] Proceed with refresh (update existing + insert new)")
+    print("  [2] Show sample of records to be updated")
+    print("  [3] Cancel operation")
+
+    while True:
+        choice = input("\nSelect option (1-3): ").strip()
+
+        if choice == "1":
+            break
+        elif choice == "2":
+            # Show sample
+            sample_size = min(3, update_count)
+            print(f"\nShowing {sample_size} sample records that will be UPDATED:")
+            print("-" * 70)
+            shown = 0
+            for record in records:
+                record_id = str(record.get(origin_field, ""))
+                if record_id and record_id in existing_ids:
+                    upload_dict = static.copy()
+                    for m in mapping.keys():
+                        if m in record.keys():
+                            upload_dict.update({mapping[m]: record[m]})
+                    upload_dict.update({"Original Data": record})
+                    print(f"\nRecord (will update existing with {unique_field}={record_id}):")
+                    pp(upload_dict)
+                    shown += 1
+                    if shown >= sample_size:
+                        break
+            print("-" * 70)
+            print("\nWhat would you like to do?")
+            print("  [1] Proceed with refresh (update existing + insert new)")
+            print("  [2] Show sample of records to be updated")
+            print("  [3] Cancel operation")
+        elif choice == "3":
+            logger.info("User cancelled refresh operation")
+            print("✔ Operation cancelled")
+            return {"inserted": 0, "modified": 0, "total": 0}
+        else:
+            print("Invalid option. Please select 1, 2, or 3.")
+
+    # Build bulk operations
+    logger.info(f"Refreshing {len(records):,} records to '{collection}' collection using bulk operations")
+    print(f"Building bulk operations...")
+
+    operations = []
+    for i, record in enumerate(records, start=1):
+        if (i % 1000 == 0) or (i == len(records)):
+            percentage = "%.2f" % (100 * i/len(records))
+            print(f"\r  Prepared {i:,}/{len(records):,} ({percentage}%) operations", end="")
+
+        # Apply mapping transformation
+        upload_dict = static.copy()
+        for m in mapping.keys():
+            if m in record.keys():
+                upload_dict.update({mapping[m]: record[m]})
+        upload_dict.update({"Original Data": record})
+
+        # Get unique identifier value
+        unique_value = str(record.get(origin_field, ""))
+
+        # Add UpdateOne operation with upsert
+        operations.append(UpdateOne(
+            {"registryID": registry_id, unique_field: unique_value},
+            {"$set": upload_dict},
+            upsert=True
+        ))
+
+    print()  # New line after progress
+
+    # Execute bulk write
+    print(f"Executing bulk write ({len(operations):,} operations)...")
+    result = mongo_regeindary[collections_map[collection]].bulk_write(operations, ordered=False)
+
+    modified_count = result.modified_count
+    inserted_count = result.upserted_count
+
+    logger.info(f"✔ Refresh complete: {inserted_count:,} inserted, {modified_count:,} updated")
+    print(f"✔ Refresh complete:")
+    print(f"  • {modified_count:,} existing records updated (MongoDB _id preserved)")
+    print(f"  • {inserted_count:,} new records inserted")
 
     return {
         "inserted": inserted_count,

@@ -341,8 +341,9 @@ MongoDB Collections: registries, organizations, filings
 ### Incremental Update Operations (NEW)
 - `preview_new_records(records, mapping, static, collection, unique_field)` - Analyze incoming records to identify new vs existing
 - `send_new_to_mongodb(records, mapping, static, collection, unique_field)` - Insert only new records, skip duplicates
-- `upsert_all_to_mongodb(records, mapping, static, collection, unique_field)` - Update existing + insert new records
-- `delete_old_records(registry_id, collection)` - Now supports incremental update option
+- `upsert_all_to_mongodb(records, mapping, static, collection, unique_field)` - Update existing + insert new records (one-by-one)
+- `refresh_all_to_mongodb(records, mapping, static, collection, unique_field)` - Bulk refresh: update existing (preserving `_id`) + insert new
+- `delete_old_records(registry_id, collection)` - Now supports incremental [i] and refresh [u] options
 
 ### Entity-Filing Matching
 - `match_filing(filing, collection)` - Link filing to organization
@@ -509,6 +510,7 @@ When you run a retrieval and existing records are found, you'll see:
 Found 10,234 existing records. Choose an option:
   [y] Delete all old records and insert new data
   [i] Incremental update (insert only new records)
+  [u] Refresh/update all records (preserves MongoDB _id)
   [n] Keep old records (may cause duplicate errors)
   [s] Skip upload entirely
 ```
@@ -578,6 +580,45 @@ upsert_all_to_mongodb(data, mapping, static,
 - ✅ Efficient (only insert what's new)
 - ✅ Transparent (preview before committing)
 - ✅ Safe (cancel anytime before insertion)
+
+#### Option [u]: Refresh/Update Workflow (Preserves MongoDB _id)
+
+**Use Case**: Replace existing data with fresh export while preserving MongoDB `_id` values.
+This is critical when downstream systems (like NIPWISS) reference records by their `_id`.
+
+1. **Preview Phase**:
+   ```
+   ======================================================================
+                            REFRESH PREVIEW
+   ======================================================================
+     • 10,200 records will be UPDATED (preserving MongoDB _id)
+     • 34 records will be INSERTED (new _id created)
+     • 10,234 total records in source data
+   ======================================================================
+   ```
+
+2. **Action Menu**:
+   ```
+   What would you like to do?
+     [1] Proceed with refresh (update existing + insert new)
+     [2] Show sample of records to be updated
+     [3] Cancel operation
+   ```
+
+3. **Bulk Write**: Uses MongoDB bulk operations for speed
+
+**How it works**:
+- Matches records on `(registryID, entityId)`
+- Uses `$set` to update document fields
+- Existing `_id` values are **never changed**
+- New records get new `_id` values automatically
+- Uses bulk_write for optimal performance (64k+ records in seconds)
+
+**Benefits**:
+- ✅ Preserves MongoDB `_id` (critical for NIPWISS links)
+- ✅ Fresh data replaces old data
+- ✅ Fast bulk operations
+- ✅ Preview before committing
 
 ### Matching Filings to Organizations
 

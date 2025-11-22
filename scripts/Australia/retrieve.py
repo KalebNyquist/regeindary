@@ -128,6 +128,15 @@ def run_everything(folder=""):
             collection='organizations',
             unique_field='entityId'
         )
+    elif decision == 'u':
+        logger.info("User chose refresh/update - updating existing records while preserving MongoDB _id")
+        final_results = refresh_all_to_mongodb(
+            raw_dicts,
+            custom_mapping,
+            static_amendment,
+            collection='organizations',
+            unique_field='entityId'
+        )
     else:
         # decision is 'y', 'n', or 0 (no existing records) - use normal batch insert
         final_results = send_all_to_mongodb(raw_dicts, custom_mapping, static_amendment)
