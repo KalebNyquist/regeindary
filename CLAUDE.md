@@ -6,7 +6,165 @@
 
 **Key Concept**: An "entity" (organization) may be linked to multiple "filings" (annual reports, tax returns, etc.)
 
-**Current Status**: Supports 4 registries (Australia, England & Wales, New Zealand, United States) with ~1,300 lines of Python code.
+**Current Status**: Supports 4 registries (Australia, England & Wales, New Zealand, United States) with ~2,500 lines of Python code.
+
+---
+
+## Strategic Position & Competitive Landscape
+
+### Market Context
+
+Regeindary operates in a space with several existing solutions:
+
+| Solution | Coverage | Open Source | Cost | Self-Hosted |
+|----------|----------|-------------|------|-------------|
+| **GlobalGiving Atlas** | 9.6M orgs, 75 countries | No | Paid license | No |
+| **Better Giving Studio** | 8.5M orgs, 80 countries | No | Paid tiers | No |
+| **Candid/GuideStar** | 1.8M US orgs | No | $6,000+/year | No |
+| **CharityBase** | 350K UK orgs | Yes | Free | Yes |
+| **Nonprofit Open Data Collective** | US IRS 990 data | Yes | Free | Yes |
+| **Regeindary** | 4 countries | Yes | Free | Yes |
+
+### Regeindary's Unique Position
+
+Regeindary fills a gap that no other solution addresses: **open source + multi-country + self-hosted**.
+
+- **CharityBase** is open source but UK-only
+- **Nonprofit Open Data Collective** is open source but US-only
+- **GlobalGiving Atlas** is multi-country but proprietary and paid
+
+### Competitive Advantages
+
+1. **Open source / self-hosted** - Full data control, no API costs or rate limits
+2. **Entity-to-filing relationships** - The `match_filing()` linking is a differentiating feature most APIs don't provide
+3. **Raw data access** - "Original Data" preservation enables custom analysis
+4. **Schema flexibility** - Researchers can extend for specific needs
+
+### Strategic Guidance
+
+**Scale is not the goal.** GlobalGiving Atlas has 9.6M records across 75 countries. Regeindary's value is **depth over breadth**:
+
+- Focus on well-maintained registries rather than maximum country count
+- Prioritize data quality and entity-filing relationships
+- Optimize for research use cases (Nipwiss) rather than donation verification
+
+**Recommended priorities:**
+1. Maintain current 4 registries with high data quality
+2. Complete Ireland support (already started)
+3. Consider Canada (complements US coverage, good data availability)
+4. Avoid duplicating CharityBase's UK work
+
+---
+
+## Future Vision: Shadow Registry for Invisible Organizations
+
+### The Problem
+
+Regeindary currently answers: **"What organizations exist according to governments?"**
+
+But millions of civil society organizations are invisible because:
+- **Weak state capacity** - Government doesn't maintain registries (many Global South nations)
+- **Hostile governments** - Registration = surveillance/persecution (authoritarian regimes)
+- **Informal civil society** - Community groups that never formalized
+- **Conflict zones** - No functioning registration system exists
+- **Indigenous organizations** - Operate outside Western nonprofit frameworks
+
+### The Vision
+
+A future tool (separate from Nipwiss) could use Regeindary's schema as infrastructure to make these invisible organizations visible to researchers and funders.
+
+**Two-layer model:**
+```
+Layer 1: Regeindary (unchanged)
+├── Official registry data
+├── High confidence, government-verified
+└── Current functionality
+
+Layer 2: "Shadow Registry" (future tool)
+├── Self-reported organizations
+├── Linkage-inferred verification
+├── Graduated trust scores
+└── Interoperable with Layer 1 via shared schema
+```
+
+### Verification Without Government Registries
+
+The key insight: **Nipwiss linkages can provide transitive trust**.
+
+If Nipwiss web scraping detects that an unregistered organization:
+- Is listed as a partner on Oxfam UK's website (a Regeindary-verified org)
+- Received a grant from Ford Foundation (verifiable)
+- Has board members who serve on registered charities
+- Is cited in academic research or reputable journalism
+
+...then those linkages bestow credibility without requiring government registration.
+
+### Proposed Data Model Extension
+
+```javascript
+// Potential schema additions for linkage-verified orgs
+{
+  entityName: "Example Grassroots Network",
+  verificationStatus: "linkage_inferred",  // vs "government_registry"
+
+  linkages: [
+    {
+      linkedEntity: ObjectId("..."),        // Ford Foundation in Regeindary
+      linkageType: "grant_recipient",
+      evidence: "https://fordfoundation.org/grants/...",
+      detectedDate: "2024-03-15",
+      confidence: 0.9
+    },
+    {
+      linkedEntity: ObjectId("..."),        // Oxfam UK
+      linkageType: "listed_partner",
+      evidence: "https://oxfam.org.uk/partners/...",
+      detectedDate: "2024-03-15",
+      confidence: 0.85
+    }
+  ],
+
+  trustScore: 0.87  // Computed from linkages
+}
+```
+
+### Value Proposition
+
+**For researchers:**
+- Study civil society where official data doesn't exist
+- Compare formal vs. informal nonprofit sectors
+- Track organizations that later formalize
+
+**For funders:**
+- Discover grassroots organizations invisible to traditional databases
+- Due diligence signals for orgs without official papers
+- Direct funding to underserved regions
+
+**For the organizations themselves:**
+- Visibility to international funders without government blessing
+- Legitimacy signal through verified relationships
+- Network discovery (find similar organizations)
+
+### Implementation Considerations
+
+This would be a **separate project** that shares Regeindary's schema but requires:
+- Privacy protections (critical for hostile-state contexts)
+- User-facing submission interface
+- Trust/reputation system design
+- Clear separation from government-verified data
+
+**Regeindary's role:** Schema infrastructure proving that heterogeneous organization data can be standardized. The same schema could accommodate linkage-verified data with appropriate metadata.
+
+### Why This Matters
+
+No existing solution provides open, self-hostable infrastructure for discovering and verifying civil society organizations outside formal government registries. Commercial APIs like GlobalGiving Atlas focus on donation routing ("is this a valid charity?"), not research discovery ("what organizations exist in this space?").
+
+The combination of:
+1. **Regeindary** (official registry aggregation)
+2. **Nipwiss** (web scraping and linkage detection)
+3. **Shadow Registry** (future - linkage-inferred verification)
+
+...could create a unique research infrastructure for studying global civil society comprehensively.
 
 ---
 
@@ -795,7 +953,8 @@ python interface.py
 
 ---
 
-**Last Updated**: 2025-11-18
-**Codebase Size**: ~1,300 lines of Python
+**Last Updated**: 2025-11-22
+**Codebase Size**: ~2,500 lines of Python
 **Registries Supported**: 4 (Australia, England & Wales, New Zealand, United States)
 **New Features**: Incremental updates for annual registry releases
+**Future Vision**: Shadow Registry for linkage-verified invisible organizations
