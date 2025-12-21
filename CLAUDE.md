@@ -415,16 +415,24 @@ MongoDB Collections: registries, organizations, filings
 │   ├── utils.py              # Database ops & utilities
 │   ├── config.toml           # MongoDB config
 │   ├── Australia/
-│   │   ├── retrieve.py
-│   │   └── mapping.json
+│   │   ├── retrieve.py       # Data retrieval logic
+│   │   ├── metadata.json     # Registry metadata (name, URLs, legal notices)
+│   │   └── mapping.json      # Field transformations
 │   ├── EnglandWales/
 │   │   ├── retrieve.py
+│   │   ├── metadata.json
 │   │   └── mapping.json
 │   ├── NewZealand/
 │   │   ├── retrieve.py
+│   │   ├── metadata.json
 │   │   └── mapping.json
-│   └── UnitedStates/
+│   ├── UnitedStates/
+│   │   ├── retrieve.py
+│   │   ├── metadata.json
+│   │   └── mapping.json
+│   └── Ireland/
 │       ├── retrieve.py
+│       ├── metadata.json
 │       └── mapping.json
 └── schemas/
     ├── entity.json           # Organization schema
@@ -465,12 +473,14 @@ MongoDB Collections: registries, organizations, filings
    - `_id`: MongoDB ObjectId
    - `name`: Registry name (e.g., "Australia")
    - `source`: URL or description
+   - `legalNotices`: Array of legal notice objects (stored once per registry, not duplicated in records)
    - `download_completion`: Timestamp when import completed
 
 2. **organizations** (standardized entities)
    - **Standard fields**: `entityId`, `entityName`, `websiteUrl`, `registeredDate`, `establishedDate`, etc.
-   - **Added fields**: `registryID`, `registryName`, `legalNotices`, `Original Data`
+   - **Added fields**: `registryID`, `registryName`, `Original Data`
    - **Indexes**: `(registryID, entityId)`, `(registryID, entityIndex)`
+   - **Note**: `legalNotices` moved to registry level (see issue #25)
 
 3. **filings** (annual reports)
    - **Standard fields**: `filingId`, `startDate`, `endDate`, `totalIncome`, `totalExpenditures`, etc.
@@ -507,6 +517,12 @@ MongoDB Collections: registries, organizations, filings
 - `run_all_match_filings()` - Process all unmatched filings (optimized for 500k+ records)
 - `create_organization_from_orphan_filing(filing)` - Auto-create org for orphan filing
 
+### Registry Metadata Operations
+- `load_registry_metadata(folder)` - Load metadata.json for a registry
+- `register_registry(metadata, collection)` - Create/update registry with legal notices at registry level
+- `get_registry_legal_notices(registry_id)` - Retrieve legal notices for a registry (for Nipwiss)
+- `display_legal_notices(legal_notices)` - Print legal notices to console
+
 ### Utilities
 - `check_for_cache()` - Prompt user about cached data
 - `retrieve_mapping(folder)` - Load mapping.json
@@ -527,14 +543,10 @@ import pandas as pd
 import requests
 # etc.
 
-# Globals
-api_retrieval_point = "https://..."
-registry_name = "CountryName"
-headers = {}
-
 # Functions
-def retrieve_data(folder):
+def retrieve_data(folder, metadata):
     """Download/cache data and return list of dicts"""
+    api_url = metadata['api_url']  # Get URL from metadata.json
     # 1. Check for cache
     # 2. Download if needed
     # 3. Parse to list of dicts
@@ -542,12 +554,57 @@ def retrieve_data(folder):
 
 def run_everything(folder):
     """Main orchestration function"""
-    # 1. Call retrieve_data()
-    # 2. Load mapping
-    # 3. Get/create registry metadata
-    # 4. Send to MongoDB
-    # 5. Mark completion
+    # 1. Load metadata from metadata.json
+    metadata = load_registry_metadata(folder)
+    registry_name = metadata['name']
+
+    # 2. Display legal notices
+    display_legal_notices(metadata.get('legal_notices', []))
+
+    # 3. Call retrieve_data()
+    raw_dicts = retrieve_data(folder, metadata)
+
+    # 4. Load mapping
+    custom_mapping = retrieve_mapping(folder)
+
+    # 5. Register registry (stores legal_notices at registry level)
+    meta_id, decision = register_registry(metadata)
+
+    # 6. Upload data (legalNotices NOT in static_amendment)
+    static_amendment = {
+        "registryName": registry_name,
+        "registryID": meta_id
+    }
+    send_all_to_mongodb(raw_dicts, custom_mapping, static_amendment)
+
+    # 7. Mark completion
+    completion_timestamp(meta_id)
 ```
+
+### metadata.json Format
+
+Each registry has a `metadata.json` file containing:
+
+```json
+{
+  "name": "Country - Registry Name",
+  "source_url": "https://data-source-page.example.com",
+  "api_url": "https://api.example.com/data.csv",
+  "headers": {
+    "user-agent": "Mozilla/5.0..."
+  },
+  "collections": ["organizations"],
+  "legal_notices": [
+    {
+      "title": "License Name",
+      "description": "Full license text...",
+      "url": "https://license-url.example.com"
+    }
+  ]
+}
+```
+
+**Key benefit**: Legal notices are stored once in the `registries` collection, not duplicated in every organization/filing record.
 
 ---
 
@@ -614,28 +671,55 @@ def run_everything(folder):
 ### Adding a New Registry
 
 1. **Create directory**: `scripts/NewCountry/`
-2. **Create retrieve.py** following standard pattern:
+
+2. **Create metadata.json** with registry configuration:
+   ```json
+   {
+     "name": "NewCountry - Registry Name",
+     "source_url": "https://registry-homepage.example.com",
+     "api_url": "https://api.example.com/data.csv",
+     "headers": {
+       "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)..."
+     },
+     "collections": ["organizations"],
+     "legal_notices": [
+       {
+         "title": "License Name",
+         "description": "License terms...",
+         "url": "https://license.example.com"
+       }
+     ]
+   }
+   ```
+
+3. **Create retrieve.py** following standard pattern:
    ```python
    from scripts.utils import *
 
-   api_retrieval_point = "https://..."
-   registry_name = "NewCountry"
-
-   def retrieve_data(folder):
-       # Implementation
+   def retrieve_data(folder, metadata):
+       # Implementation using metadata['api_url']
        return data_as_list_of_dicts
 
    def run_everything(folder):
-       data = retrieve_data(folder)
+       metadata = load_registry_metadata(folder)
+       display_legal_notices(metadata.get('legal_notices', []))
+
+       data = retrieve_data(folder, metadata)
        mapping = retrieve_mapping(folder)
-       meta_id = meta_check(registry_name, api_retrieval_point)
-       send_all_to_mongodb(data, 'organizations', mapping, meta_id)
+       meta_id, _ = register_registry(metadata)
+
+       static = {"registryName": metadata['name'], "registryID": meta_id}
+       send_all_to_mongodb(data, mapping, static)
        completion_timestamp(meta_id)
    ```
-3. **Create mapping.json** with field mappings
-4. **Update interface.py** to add menu option
-5. **Test** with small dataset first
-6. **Run** full import and verify with status_check()
+
+4. **Create mapping.json** with field mappings
+
+5. **Update interface.py** to add menu option
+
+6. **Test** with small dataset first
+
+7. **Run** full import and verify with status_check()
 
 ### Testing Changes
 

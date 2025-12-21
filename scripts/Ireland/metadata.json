@@ -1,0 +1,19 @@
+{
+  "name": "Ireland - Charities Regulator",
+  "source_url": "https://data.gov.ie/dataset/register-of-charities-in-ireland",
+  "api_endpoints": {
+    "entities": "https://www.charitiesregulator.ie/media/d52jwriz/register-of-charities.csv",
+    "filings": "https://www.charitiesregulator.ie/media/yeia3rfc/charity-annual-reports.csv"
+  },
+  "headers": {
+    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  },
+  "collections": ["organizations", "filings"],
+  "legal_notices": [
+    {
+      "title": "Creative Commons Attribution 4.0 International",
+      "description": "You are free to:\nShare — copy and redistribute the material in any medium or format for any purpose, even commercially.\nAdapt — remix, transform, and build upon the material for any purpose, even commercially.\nThe licensor cannot revoke these freedoms as long as you follow the license terms.\nUnder the following terms:\nAttribution — You must give appropriate credit, provide a link to the license, and indicate if changes were made. You may do so in any reasonable manner, but not in any way that suggests the licensor endorses you or your use.\nShareAlike — If you remix, transform, or build upon the material, you must distribute your contributions under the same license as the original.\nNo additional restrictions — You may not apply legal terms or technological measures that legally restrict others from doing anything the license permits.",
+      "url": "https://creativecommons.org/licenses/by/4.0/"
+    }
+  ]
+}

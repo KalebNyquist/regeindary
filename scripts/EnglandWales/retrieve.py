@@ -2,7 +2,7 @@
 
 Downloads charity entities and filing data from the Charity Commission Register,
 extracts from zipped JSON files on Azure blob storage, applies field mappings,
-and uploads to MongoDB.
+and uploads to MongoDB. Registry metadata (including legal notices) loaded from metadata.json.
 """
 from scripts.utils import *
 from requests import get
@@ -14,28 +14,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Globals
-api_retrieval_points = {
-    "entities": {
-        "url": "https://ccewuksprdoneregsadata1.blob.core.windows.net/data/json/publicextract.charity.zip",
-        "filename": "publicextract.charity.json"
-    },
-    "filings": {
-        "url": "https://ccewuksprdoneregsadata1.blob.core.windows.net/data/json/publicextract"
-               ".charity_annual_return_history.zip",
-        "filename": "publicextract.charity_annual_return_history.json"
-    }
-}
-source_url = 'https://register-of-charities.charitycommission.gov.uk/en/register/full-register-download'
-headers = {"user-agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0"}
-registry_name = "England and Wales - Charity Commission Register of Charities"
 
-
-def retrieve_data(folder, label):
+def retrieve_data(folder, metadata, label):
     """Download and parse England & Wales charity data (entities or filings).
 
     Args:
         folder (str): Directory path for cache storage.
+        metadata (dict): Registry metadata containing api_endpoints.
         label (str): Dataset type - either "entities" or "filings".
 
     Returns:
@@ -50,7 +35,7 @@ def retrieve_data(folder, label):
     elif cached is False:
         logger.info(f"Downloading {label} data from Azure blob storage")
         print(f"  Step 1: Downloading and extracting {label} data...")
-        retrieval_with_unzip(label)
+        retrieval_with_unzip(metadata, label)
 
     logger.info(f"Loading JSON data from cache_{label}.json")
     print(f"  Step 2: Loading JSON data...")
@@ -61,19 +46,20 @@ def retrieve_data(folder, label):
     return response_dicts
 
 
-def retrieval_with_unzip(label):
+def retrieval_with_unzip(metadata, label):
     """Download, extract, and prepare zipped JSON data from Azure blob storage.
 
     Args:
+        metadata (dict): Registry metadata containing api_endpoints.
         label (str): Dataset type - either "entities" or "filings".
 
     Raises:
         Exception: If HTTP status code is not 200.
     """
-    api_retrieval_point = api_retrieval_points[label]
+    api_endpoint = metadata['api_endpoints'][label]
 
-    logger.info(f"Downloading from {api_retrieval_point['url']}")
-    zipped_download = get(api_retrieval_point["url"])
+    logger.info(f"Downloading from {api_endpoint['url']}")
+    zipped_download = get(api_endpoint["url"])
 
     if (sc := zipped_download.status_code) != 200:
         logger.error(f"HTTP request failed with status code {sc}")
@@ -84,7 +70,7 @@ def retrieval_with_unzip(label):
         zd.write(zipped_download.content)
         zd.close()
 
-    specific_file_name = api_retrieval_point["filename"]
+    specific_file_name = api_endpoint["filename"]
     logger.info(f"Extracting {specific_file_name} from zip archive")
 
     with ZipFile(f"cache_{label}.zip", 'r') as zf:
@@ -112,6 +98,7 @@ def run_everything(folder=""):
 
     Processes both entities (charities) and filings (annual returns) from the
     Charity Commission Register. Applies field mappings and uploads to MongoDB.
+    Legal notices are stored at the registry level (in metadata.json).
 
     Args:
         folder (str): Directory path for cache and mapping files. Defaults to "".
@@ -119,21 +106,30 @@ def run_everything(folder=""):
     Returns:
         dict or None: Dictionary of MongoDB insert results, or None if user skips upload.
     """
+    # Load registry metadata from metadata.json
+    metadata = load_registry_metadata(folder)
+    registry_name = metadata['name']
+
     # Initiation Message
     logger.info(f"========== Starting {registry_name} data retrieval ==========")
     print(f"\n{'='*70}")
     print(f"Retrieving data from: {registry_name}")
     print(f"{'='*70}\n")
 
+    # Display legal notices (stored in metadata.json, saved to registry collection)
+    display_legal_notices(metadata.get('legal_notices', []))
+
     # Entities
     logger.info("Phase 1: Processing charity entities")
     print("Phase 1: Processing Charity Entities")
     print("-" * 70)
-    raw_dicts = retrieve_data(folder, label="entities")
+    raw_dicts = retrieve_data(folder, metadata, label="entities")
     custom_mapping = retrieve_mapping(folder)
-    meta_id, skip = meta_check(registry_name, source_url)
 
-    # Upload Data
+    # Register registry (stores legal notices at registry level, not in each record)
+    meta_id, skip = register_registry(metadata)
+
+    # Upload Data - legalNotices no longer duplicated in each record
     static_amendment = {
         "registryName": registry_name,
         "registryID": meta_id
@@ -150,8 +146,8 @@ def run_everything(folder=""):
     print(f"\n{'='*70}")
     print("Phase 2: Processing Charity Filings (Annual Returns)")
     print("-" * 70)
-    raw_dicts = retrieve_data(folder, label="filings")
-    meta_id, skip = meta_check(registry_name, source_url, collection="filings")
+    raw_dicts = retrieve_data(folder, metadata, label="filings")
+    meta_id, skip = register_registry(metadata, collection="filings")
 
     logger.info(f"Retrieved {len(raw_dicts):,} filing records")
     print(f"  Retrieved {len(raw_dicts):,} filing records\n")

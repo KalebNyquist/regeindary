@@ -1,3 +1,9 @@
+"""Data retrieval module for United States IRS registry.
+
+Downloads entity data from IRS Exempt Organizations Business Master File Extract
+and filing metadata from GivingTuesday Data Commons. Applies field mappings and
+uploads to MongoDB. Registry metadata (including legal notices) loaded from metadata.json.
+"""
 import pandas as pd
 
 from scripts.utils import *
@@ -8,17 +14,9 @@ from datetime import datetime
 import zipfile_deflate64 as zipfile  # - [ ] list as a dependency
 from tqdm import tqdm  # For `download_file_with_progress()`
 import warnings
+import logging
 
-# Globals
-api_retrieval_points = {
-    "entities": {
-        "url": "https://www.irs.gov/pub/irs-soi/eo{i}.csv"
-    },
-    "filings": {
-        "url": "https://www.irs.gov/charities-non-profits/form-990-series-downloads"  # technically a scrape...
-        #  this is complicated by the Giving Tuesday Data Commons
-    }
-}
+logger = logging.getLogger(__name__)
 
 
 # Utils Candidates
@@ -77,34 +75,36 @@ def establish_s3_client():
     return s3_client
 
 
-source_url = 'https://www.irs.gov/charities-non-profits/exempt-organizations-business-master-file-extract-eo-bmf'
-source_url_2 = 'https://www.irs.gov/charities-non-profits/form-990-series-downloads'  # - [ ] DO SOMETHING ABOUT THIS
-headers = {"user-agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0"}
-registry_name = "United States - Internal Revenue Service - Exempt Organizations Business Master File Extract"
-filings_name = "United States - Form 990 Series"
 directory_path = "zips_x"
 
-# RETRIEVE ENTITIES
-def retrieve_entities():
-    # - [ ] can also grab directly from GivingTuesday DataCommons!
 
+# RETRIEVE ENTITIES
+def retrieve_entities(metadata):
+    """Download and aggregate entity data from IRS regional EO BMF files.
+
+    Args:
+        metadata (dict): Registry metadata containing api_endpoints.
+
+    Returns:
+        list: List of dictionaries containing entity records.
+    """
+    # - [ ] can also grab directly from GivingTuesday DataCommons!
+    api_config = metadata['api_endpoints']['entities']
+    url_template = api_config['url_template']
+    regions = api_config['regions']
+
+    logger.info("Retrieving US entities from IRS EO BMF files")
     print("Retrieving Entities")
-    known_region_numbers = range(1, 5)
-    # Region 1 = Northeast
-    # Region 2 = Mid-Atlantic and Great Lakes
-    # Region 3 = Gulf Coast and Pacific Coast
-    # Region 4 = International and all others (i.e. Puerto Rico)
-    # True as of December 8th 2024
 
     # Temporary Directory for Storing Regional Files
     os.mkdir("temp")
     os.mkdir("temp/eo_bmf")
 
     # Download Regional EO BMF files
-    for i in known_region_numbers:
-        print(f"\rDownloading Region {i} of {known_region_numbers[-1]} in master file")
-        api_retrieval_point = api_retrieval_points["entities"]["url"].format(i=i)
-        response = requests.get(api_retrieval_point)
+    for i in regions:
+        print(f"\rDownloading Region {i} of {regions[-1]} in master file")
+        api_url = url_template.format(i=i)
+        response = requests.get(api_url)
         content = response.content.decode('utf-8')
         with open(f'temp/eo_bmf/eo{i}.csv', 'w') as eoX:
             eoX.write(content)
@@ -113,8 +113,8 @@ def retrieve_entities():
     eo_master = None
     categorical_columns = ["EIN", "GROUP", "SUBSECTION", "AFFILIATION", "CLASSIFICATION", "RULING", "DEDUCTIBILITY",
                            'FOUNDATION', "ACTIVITY", "ORGANIZATION", "STATUS", "TAX_PERIOD", "ACCT_PD"]
-    for i in known_region_numbers:
-        print(f"\rAdding Region {i} of {known_region_numbers[-1]} to aggregation")
+    for i in regions:
+        print(f"\rAdding Region {i} of {regions[-1]} to aggregation")
         eo_addition = pd.read_csv(f"temp/eo_bmf/eo{i}.csv", dtype={col: str for col in categorical_columns})
         # consider changing dtype to https://pandas.pydata.org/docs/reference/api/pandas.StringDtype.html
 
@@ -132,7 +132,7 @@ def retrieve_entities():
 
     # Clean-up
     print("Clean up")
-    for i in known_region_numbers:
+    for i in regions:
         os.remove(f'temp/eo_bmf/eo{i}.csv')
     os.rmdir("temp/eo_bmf")
     os.rmdir("temp")
@@ -148,14 +148,14 @@ def retrieve_entities():
 # This method downloads 990s à la carte.
 # Above URL courtesy of https://github.com/Nonprofit-Open-Data-Collective/irs990efile
 
-def retrieve_locations_of_filing_zips():
+def retrieve_locations_of_filing_zips(metadata):
     """Creates a .csv file that contains links to each of the .zip files with 990 .xml files"""
     # This is a webscrape!
     # Corresponds with Jupyter Notebook "Core 0a0a" from earlier version of project
 
     # Get Webpage
-    api_retrieval_point = api_retrieval_points['filings']['url']
-    response = requests.get(api_retrieval_point)
+    api_url = metadata['api_endpoints']['filings']['url']
+    response = requests.get(api_url)
     if response.status_code != 200:
         raise Exception(f"Status Code {response.status_code} is not 200 OK")
 
@@ -290,7 +290,7 @@ def retrieve_locations_of_filing_zips():
 
         return filepath
 
-    export_filepath = get_filepath(scrape_url=api_retrieval_point, timestamp_format="date")
+    export_filepath = get_filepath(scrape_url=api_url, timestamp_format="date")
     df.to_csv(export_filepath, index=False, encoding="utf-8-sig")
     return export_filepath
 
@@ -387,83 +387,44 @@ def get_most_recent_index_OfficialIRSWebsite():
 # RUN EVERYTHING
 # - [ ] This currently excludes the "RETRIEVE FILINGS" functions as part of the process
 def run_everything(folder=""):
-    # Initiation Message
-    print(f"Retrieving data from `{registry_name}`")
+    """Main orchestration function for retrieving United States IRS data.
 
-    # Legal Notice
-    # - [ ] Only true if not retrieving directly from IRS Website!
-    # - [ ] This and other legal notices should be made part of the registry entry
-    description = """
-    Database Contents License (DbCL)
+    Downloads entity data from IRS EO BMF files and filing metadata from
+    GivingTuesday Data Commons. Applies field mappings and uploads to MongoDB.
+    Legal notices are stored at the registry level (in metadata.json).
 
-The Licensor and You agree as follows:
+    Args:
+        folder (str): Directory path for cache and mapping files. Defaults to "".
 
-1.0 Definitions of Capitalised Words
-
-The definitions of the Open Database License (ODbL) 1.0 are incorporated 
-by reference into the Database Contents License.
-
-2.0 Rights granted and Conditions of Use<
-
-2.1 Rights granted. The Licensor grants to You a worldwide,
-royalty-free, non-exclusive, perpetual, irrevocable copyright license to
-do any act that is restricted by copyright over anything within the
-Contents, whether in the original medium or any other. These rights
-explicitly include commercial use, and do not exclude any field of
-endeavour. These rights include, without limitation, the right to
-sublicense the work.
-
-2.2 Conditions of Use. You must comply with the ODbL.
-
-2.3 Relationship to Databases and ODbL. This license does not cover any
-Database Rights, Database copyright, or contract over the Contents as
-part of the Database. Please see the ODbL covering the Database for more
-details about Your rights and obligations.
-
-2.4 Non-assertion of copyright over facts. The Licensor takes the
-position that factual information is not covered by copyright. The DbCL
-grants you permission for any information having copyright contained in
-the Contents.
-
-3.0 Warranties, disclaimer, and limitation of liability
-
-3.1 The Contents are licensed by the Licensor “as is” and without any
-warranty of any kind, either express or implied, whether of title, of
-accuracy, of the presence of absence of errors, of fitness for purpose,
-or otherwise. Some jurisdictions do not allow the exclusion of implied
-warranties, so this exclusion may not apply to You.
-
-3.2 Subject to any liability that may not be excluded or limited by law,
-the Licensor is not liable for, and expressly excludes, all liability
-for loss or damage however and whenever caused to anyone by any use
-under this License, whether by You or by anyone else, and whether caused
-by any fault on the part of the Licensor or not. This exclusion of
-liability includes, but is not limited to, any special, incidental,
-consequential, punitive, or exemplary damages. This exclusion applies
-even if the Licensor has been advised of the possibility of such
-damages.
-
-3.3 If liability may not be excluded by law, it is limited to actual and
-direct financial loss to the extent it is caused by proved negligence on
-the part of the Licensor.
+    Returns:
+        dict or None: Dictionary of MongoDB insert results, or None if user skips upload.
     """
+    # Load registry metadata from metadata.json
+    metadata = load_registry_metadata(folder)
+    registry_name = metadata['name']
 
-    legal_notice = {
-        "title": "Open Data Commons - Database Contents License (DbCL) v1.0",
-        "description": description,
-        "url": "https://opendatacommons.org/licenses/dbcl/1-0/"
-    }
+    # Initiation Message
+    logger.info(f"========== Starting {registry_name} data retrieval ==========")
+    print(f"\n{'='*70}")
+    print(f"Retrieving data from: {registry_name}")
+    print(f"{'='*70}\n")
+
+    # Display legal notices (stored in metadata.json, saved to registry collection)
+    display_legal_notices(metadata.get('legal_notices', []))
 
     # Entities
+    logger.info("Phase 1: Processing IRS entities")
     print(f"Starting with entities...")
-    # Download Data
-    raw_dicts = retrieve_entities()
-    custom_mapping = retrieve_mapping(folder)
-    meta_id, skip = meta_check(registry_name, source_url)
 
-    # Upload Data
+    # Download Data
+    raw_dicts = retrieve_entities(metadata)
+    custom_mapping = retrieve_mapping(folder)
+
+    # Register registry (stores legal notices at registry level, not in each record)
+    meta_id, skip = register_registry(metadata)
+
+    # Upload Data - legalNotices no longer duplicated in each record
     static_amendment = {
-        "legalNotices": [legal_notice],
         "registryName": registry_name,
         "registryID": meta_id
     }
@@ -475,6 +436,7 @@ the part of the Licensor.
         final_results = send_all_to_mongodb(raw_dicts, custom_mapping, static_amendment)
 
     # Filings Metadata
+    logger.info("Phase 2: Processing IRS filings metadata")
     print("\nContinuing with filings...")
 
     use_cache = {"AWS Path": True, "CSV File": True}
@@ -488,11 +450,12 @@ the part of the Licensor.
     filings_metadata_dicts = pd.read_csv("cache_filings_indices.csv").to_dict(orient="records")
 
     print("", len(filings_metadata_dicts), "records retrieved from original source file")
-    meta_id, skip = meta_check(registry_name, source_url, collection="filings")
+    meta_id, skip = register_registry(metadata, collection="filings")
     if skip != 's':
         final_results = send_all_to_mongodb(filings_metadata_dicts, custom_mapping, static_amendment, collection='filings')
 
     completion_timestamp(meta_id)
+    logger.info(f"✔ {registry_name} data retrieval completed successfully")
     print("\n ✔ Complete")
 
     return final_results

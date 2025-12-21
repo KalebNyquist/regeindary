@@ -2,6 +2,7 @@
 
 Downloads charity data from the Australian Charities and Not-for-profits Commission,
 applies field mappings according to mapping.json, and uploads to MongoDB.
+Registry metadata (including legal notices) loaded from metadata.json.
 """
 import os
 import sys
@@ -19,25 +20,20 @@ from scripts.utils import *
 
 logger = logging.getLogger(__name__)
 
-# Globals
-api_retrieval_point = ("https://data.gov.au/data/dataset/b050b242-4487-4306-abf5-07ca073e5594/resource/8fb32972-24e9"
-                       "-4c95-885e-7140be51be8a/download/datadotgov_main.csv")
-source_url = 'https://data.gov.au/data/en/dataset/acnc-register'
-headers = {"user-agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0"}
-registry_name = "Australia - ACNC Charity Register"
-
 
 # Functions
-def retrieve_data(folder):
+def retrieve_data(folder, metadata):
     """Download and parse Australian charity register data.
 
     Args:
         folder (str): Directory path for cache storage.
+        metadata (dict): Registry metadata containing api_url.
 
     Returns:
         list: List of dictionaries containing charity records from Australia.
     """
     cached = check_for_cache(folder)
+    api_url = metadata['api_url']
 
     if cached:
         logger.info("Loading data from cache")
@@ -45,9 +41,9 @@ def retrieve_data(folder):
                                   low_memory=False)  # Encoding error unique to Australia
     elif cached is False:
         # Structure -- Encoding error unique to Australia
-        logger.info(f"Downloading Australian charity data from {api_retrieval_point}")
+        logger.info(f"Downloading Australian charity data from {api_url}")
         print("  Step 1/2: Downloading data into dataframe...")
-        response_df = pd.read_csv(api_retrieval_point, encoding_errors="backslashreplace")
+        response_df = pd.read_csv(api_url, encoding_errors="backslashreplace")
         response_df.to_csv(f"{folder}cache.csv")
         logger.info(f"Data cached to {folder}cache.csv")
     else:
@@ -66,7 +62,8 @@ def run_everything(folder=""):
     """Main orchestration function for retrieving and uploading Australian charity data.
 
     Downloads data from the Australian Charities and Not-for-profits Commission (ACNC),
-    applies field mappings, and uploads to MongoDB with legal notice metadata.
+    applies field mappings, and uploads to MongoDB. Legal notices are stored at the
+    registry level (in metadata.json), not duplicated in each record.
 
     Args:
         folder (str): Directory path for cache and mapping files. Defaults to "".
@@ -74,39 +71,28 @@ def run_everything(folder=""):
     Returns:
         dict: Dictionary of MongoDB insert results indexed by record number.
     """
+    # Load registry metadata from metadata.json
+    metadata = load_registry_metadata(folder)
+    registry_name = metadata['name']
+
     # Initiation Message
     logger.info(f"========== Starting {registry_name} data retrieval ==========")
     print(f"\n{'='*70}")
     print(f"Retrieving data from: {registry_name}")
     print(f"{'='*70}\n")
 
-    # Legal Notice
-    description = ("You are free to:\n"
-                   "Share — copy and redistribute the material in any medium or format for any purpose, "
-                   "even commercially.\n"
-                   "Adapt — remix, transform, and build upon the material for any purpose, even commercially.\n"
-                   "The licensor cannot revoke these freedoms as long as you follow the license terms.\n"
-                   "Under the following terms:\n"
-                   "Attribution — You must give appropriate credit, provide a link to the license, and indicate if "
-                   "changes were made. You may do so in any reasonable manner, but not in any way that suggests the "
-                   "licensor endorses you or your use.\n"
-                   "No additional restrictions — You may not apply legal terms or technological measures that legally "
-                   "restrict others from doing anything the license permits.")
-
-    legal_notice = {
-        "title": "Creative Commons Attribution 3.0 Australia",
-        "description": description,
-        "url": "https://creativecommons.org/licenses/by/3.0/au/"
-    }
+    # Display legal notices (stored in metadata.json, saved to registry collection)
+    display_legal_notices(metadata.get('legal_notices', []))
 
     # Download Data
-    raw_dicts = retrieve_data(folder)
+    raw_dicts = retrieve_data(folder, metadata)
     custom_mapping = retrieve_mapping(folder)
-    meta_id, decision = meta_check(registry_name, source_url)
 
-    # Upload Data
+    # Register registry (stores legal notices at registry level, not in each record)
+    meta_id, decision = register_registry(metadata)
+
+    # Upload Data - legalNotices no longer duplicated in each record
     static_amendment = {
-        "legalNotices": [legal_notice],
         "registryName": registry_name,
         "registryID": meta_id
     }

@@ -1,0 +1,17 @@
+{
+  "name": "New Zealand - The Charities Register/Te Rēhita Kaupapa Atawhai",
+  "source_url": "https://www.charities.govt.nz/charities-in-new-zealand/the-charities-register/open-data/",
+  "api_url": "http://www.odata.charities.govt.nz/Organisations?$format=csv&$returnall=true",
+  "headers": {
+    "user-agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0"
+  },
+  "collections": ["organizations"],
+  "legal_notices": [
+    {
+      "function": "No Email Solicitation",
+      "title": "Unsolicited Electronic Messages Act 2007",
+      "description": "The publication of email addresses on the Charities Register does not constitute deemed consent for the purposes of the Unsolicited Electronic Messages Act 2007 (http://www.legislation.govt.nz/act/public/2007/0007/latest/DLM405134.html) which prohibits spam, or unsolicited commercial electronic messages. You must not use this search function or the Charities Register to obtain email addresses of charities for the purposes of marketing or promoting goods or services, even where those goods or services are provided for free or at a reduced price. For more information, visit the Department of Internal Affairs anti-spam webpages: https://www.dia.govt.nz/diawebsite.nsf/wpg_URL/Services-Anti-Spam-Index?OpenDocument",
+      "url": "https://www.dia.govt.nz/diawebsite.nsf/wpg_URL/Services-Anti-Spam-Index?OpenDocument"
+    }
+  ]
+}

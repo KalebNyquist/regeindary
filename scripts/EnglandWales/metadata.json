@@ -1,0 +1,25 @@
+{
+  "name": "England and Wales - Charity Commission Register of Charities",
+  "source_url": "https://register-of-charities.charitycommission.gov.uk/en/register/full-register-download",
+  "api_endpoints": {
+    "entities": {
+      "url": "https://ccewuksprdoneregsadata1.blob.core.windows.net/data/json/publicextract.charity.zip",
+      "filename": "publicextract.charity.json"
+    },
+    "filings": {
+      "url": "https://ccewuksprdoneregsadata1.blob.core.windows.net/data/json/publicextract.charity_annual_return_history.zip",
+      "filename": "publicextract.charity_annual_return_history.json"
+    }
+  },
+  "headers": {
+    "user-agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0"
+  },
+  "collections": ["organizations", "filings"],
+  "legal_notices": [
+    {
+      "title": "Open Government Licence v3.0",
+      "description": "You are encouraged to use and re-use the Information that is available under this licence freely and flexibly, with only a few conditions. You are free to copy, publish, distribute and transmit the Information, adapt the Information, and exploit the Information commercially and non-commercially. You must acknowledge the source of the Information in your product or application by including or linking to any attribution statement specified by the Information Provider(s).",
+      "url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/"
+    }
+  ]
+}
