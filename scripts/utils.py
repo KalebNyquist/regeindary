@@ -570,11 +570,10 @@ def load_registry_metadata(folder=""):
     return metadata
 
 
-def register_registry(metadata, collection="organizations"):
-    """Register or update a registry with full metadata including legal notices.
+def create_registry(metadata, collection="organizations"):
+    """Create or update a registry with full metadata including legal notices.
 
     Creates a new registry entry if one doesn't exist, or updates an existing one.
-    Legal notices are stored at the registry level (not duplicated in each record).
 
     Args:
         metadata (dict): Registry metadata containing:

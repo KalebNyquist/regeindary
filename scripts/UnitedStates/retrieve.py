@@ -2,7 +2,7 @@
 
 Downloads entity data from IRS Exempt Organizations Business Master File Extract
 and filing metadata from GivingTuesday Data Commons. Applies field mappings and
-uploads to MongoDB. Registry metadata (including legal notices) loaded from metadata.json.
+uploads to MongoDB.
 """
 import pandas as pd
 
@@ -391,7 +391,6 @@ def run_everything(folder=""):
 
     Downloads entity data from IRS EO BMF files and filing metadata from
     GivingTuesday Data Commons. Applies field mappings and uploads to MongoDB.
-    Legal notices are stored at the registry level (in metadata.json).
 
     Args:
         folder (str): Directory path for cache and mapping files. Defaults to "".
@@ -409,7 +408,6 @@ def run_everything(folder=""):
     print(f"Retrieving data from: {registry_name}")
     print(f"{'='*70}\n")
 
-    # Display legal notices (stored in metadata.json, saved to registry collection)
     display_legal_notices(metadata.get('legal_notices', []))
 
     # Entities
@@ -419,11 +417,9 @@ def run_everything(folder=""):
     # Download Data
     raw_dicts = retrieve_entities(metadata)
     custom_mapping = retrieve_mapping(folder)
+    meta_id, skip = create_registry(metadata)
 
-    # Register registry (stores legal notices at registry level, not in each record)
-    meta_id, skip = register_registry(metadata)
-
-    # Upload Data - legalNotices no longer duplicated in each record
+    # Upload Data
     static_amendment = {
         "registryName": registry_name,
         "registryID": meta_id
@@ -450,7 +446,7 @@ def run_everything(folder=""):
     filings_metadata_dicts = pd.read_csv("cache_filings_indices.csv").to_dict(orient="records")
 
     print("", len(filings_metadata_dicts), "records retrieved from original source file")
-    meta_id, skip = register_registry(metadata, collection="filings")
+    meta_id, skip = create_registry(metadata, collection="filings")
     if skip != 's':
         final_results = send_all_to_mongodb(filings_metadata_dicts, custom_mapping, static_amendment, collection='filings')
 

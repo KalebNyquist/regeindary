@@ -2,7 +2,6 @@
 
 Downloads charity data from the Australian Charities and Not-for-profits Commission,
 applies field mappings according to mapping.json, and uploads to MongoDB.
-Registry metadata (including legal notices) loaded from metadata.json.
 """
 import os
 import sys
@@ -62,8 +61,7 @@ def run_everything(folder=""):
     """Main orchestration function for retrieving and uploading Australian charity data.
 
     Downloads data from the Australian Charities and Not-for-profits Commission (ACNC),
-    applies field mappings, and uploads to MongoDB. Legal notices are stored at the
-    registry level (in metadata.json), not duplicated in each record.
+    applies field mappings, and uploads to MongoDB.
 
     Args:
         folder (str): Directory path for cache and mapping files. Defaults to "".
@@ -81,17 +79,14 @@ def run_everything(folder=""):
     print(f"Retrieving data from: {registry_name}")
     print(f"{'='*70}\n")
 
-    # Display legal notices (stored in metadata.json, saved to registry collection)
     display_legal_notices(metadata.get('legal_notices', []))
 
     # Download Data
     raw_dicts = retrieve_data(folder, metadata)
     custom_mapping = retrieve_mapping(folder)
+    meta_id, decision = create_registry(metadata)
 
-    # Register registry (stores legal notices at registry level, not in each record)
-    meta_id, decision = register_registry(metadata)
-
-    # Upload Data - legalNotices no longer duplicated in each record
+    # Upload Data
     static_amendment = {
         "registryName": registry_name,
         "registryID": meta_id

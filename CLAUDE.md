@@ -519,7 +519,7 @@ MongoDB Collections: registries, organizations, filings
 
 ### Registry Metadata Operations
 - `load_registry_metadata(folder)` - Load metadata.json for a registry
-- `register_registry(metadata, collection)` - Create/update registry with legal notices at registry level
+- `create_registry(metadata, collection)` - Create/update registry with legal notices
 - `get_registry_legal_notices(registry_id)` - Retrieve legal notices for a registry (for Nipwiss)
 - `display_legal_notices(legal_notices)` - Print legal notices to console
 
@@ -567,10 +567,10 @@ def run_everything(folder):
     # 4. Load mapping
     custom_mapping = retrieve_mapping(folder)
 
-    # 5. Register registry (stores legal_notices at registry level)
-    meta_id, decision = register_registry(metadata)
+    # 5. Create registry
+    meta_id, decision = create_registry(metadata)
 
-    # 6. Upload data (legalNotices NOT in static_amendment)
+    # 6. Upload data
     static_amendment = {
         "registryName": registry_name,
         "registryID": meta_id
@@ -706,7 +706,7 @@ Each registry has a `metadata.json` file containing:
 
        data = retrieve_data(folder, metadata)
        mapping = retrieve_mapping(folder)
-       meta_id, _ = register_registry(metadata)
+       meta_id, _ = create_registry(metadata)
 
        static = {"registryName": metadata['name'], "registryID": meta_id}
        send_all_to_mongodb(data, mapping, static)
