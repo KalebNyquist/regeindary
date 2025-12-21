@@ -11,21 +11,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Globals
-api_retrieval_points = {
-    "entities": "https://www.charitiesregulator.ie/media/d52jwriz/register-of-charities.csv",
-    "filings": "https://www.charitiesregulator.ie/media/yeia3rfc/charity-annual-reports.csv"
-}
-source_url = 'https://data.gov.ie/dataset/register-of-charities-in-ireland'
-headers = {"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
-registry_name = "Ireland - Charities Regulator"
 
-
-def retrieve_data(folder, label):
+def retrieve_data(folder, metadata, label):
     """Download and parse Ireland charity data (entities or filings).
 
     Args:
         folder (str): Directory path for cache storage.
+        metadata (dict): Registry metadata containing api_endpoints.
         label (str): Dataset type - either "entities" or "filings".
 
     Returns:
@@ -40,7 +32,7 @@ def retrieve_data(folder, label):
     elif cached is False:
         logger.info(f"Downloading {label} data from Charities Regulator")
         print(f"  Step 1: Downloading {label} data...")
-        download_csv(folder, label)
+        download_csv(folder, metadata, label)
 
     logger.info(f"Loading CSV data from cache_{label}.csv")
     print(f"  Step 2: Loading CSV data...")
@@ -67,7 +59,7 @@ def retrieve_data(folder, label):
     return response_dicts
 
 
-def download_csv(folder, label):
+def download_csv(folder, metadata, label):
     """Download CSV data from Charities Regulator.
 
     Attempts to download using pandas (which sometimes bypasses protections),
@@ -75,14 +67,16 @@ def download_csv(folder, label):
 
     Args:
         folder (str): Directory path for cache storage.
+        metadata (dict): Registry metadata containing api_endpoints and headers.
         label (str): Dataset type - either "entities" or "filings".
 
     Raises:
         Exception: If download fails with helpful instructions for manual download.
     """
-    api_retrieval_point = api_retrieval_points[label]
+    api_url = metadata['api_endpoints'][label]
+    headers = metadata.get('headers', {})
 
-    logger.info(f"Downloading from {api_retrieval_point}")
+    logger.info(f"Downloading from {api_url}")
 
     # Try Method 1: Use pandas directly (sometimes bypasses Cloudflare)
     try:
@@ -91,8 +85,8 @@ def download_csv(folder, label):
         df = None
         for encoding in ['utf-8', 'latin-1', 'iso-8859-1']:
             try:
-                df = pd.read_csv(api_retrieval_point, encoding=encoding,
-                                storage_options={'User-Agent': headers['user-agent']}, header=1)
+                df = pd.read_csv(api_url, encoding=encoding,
+                                storage_options={'User-Agent': headers.get('user-agent', '')}, header=1)
                 logger.debug(f"Downloaded with {encoding} encoding")
                 break
             except (UnicodeDecodeError, Exception):
@@ -124,7 +118,7 @@ def download_csv(folder, label):
         }
 
         logger.debug("Attempting download via requests library")
-        response = get(api_retrieval_point, headers=enhanced_headers, timeout=30)
+        response = get(api_url, headers=enhanced_headers, timeout=30)
 
         if (sc := response.status_code) != 200:
             logger.error(f"HTTP request failed with status code {sc}")
@@ -147,13 +141,13 @@ def download_csv(folder, label):
         print("\nThe website appears to be blocking automated downloads (likely Cloudflare).")
         print("\nPlease download the file manually:")
         print(f"  1. Open this URL in your browser:")
-        print(f"     {api_retrieval_point}")
+        print(f"     {api_url}")
         print(f"\n  2. Save the downloaded file as:")
         print(f"     {os.path.abspath(folder)}cache_{label}.csv")
         print(f"\n  3. Re-run this script - it will use the cached file")
         print("="*70 + "\n")
 
-        raise Exception(f"Download failed. Please download manually from: {api_retrieval_point}")
+        raise Exception(f"Download failed. Please download manually from: {api_url}")
 
 
 def run_everything(folder=""):
@@ -168,44 +162,28 @@ def run_everything(folder=""):
     Returns:
         dict or None: Dictionary of MongoDB insert results, or None if user skips upload.
     """
+    # Load registry metadata from metadata.json
+    metadata = load_registry_metadata(folder)
+    registry_name = metadata['name']
+
     # Initiation Message
     logger.info(f"========== Starting {registry_name} data retrieval ==========")
     print(f"\n{'='*70}")
     print(f"Retrieving data from: {registry_name}")
     print(f"{'='*70}\n")
 
-    # Legal Notice
-    description = ("You are free to:\n"
-                   "Share — copy and redistribute the material in any medium or format for any purpose, "
-                   "even commercially.\n"
-                   "Adapt — remix, transform, and build upon the material for any purpose, even commercially.\n"
-                   "The licensor cannot revoke these freedoms as long as you follow the license terms.\n"
-                   "Under the following terms:\n"
-                   "Attribution — You must give appropriate credit , provide a link to the license, and "
-                   "indicate if changes were made. You may do so in any reasonable manner, but not in any way "
-                   "that suggests the licensor endorses you or your use.\n"
-                   "ShareAlike — If you remix, transform, or build upon the material, you must distribute "
-                   "your contributions under the same license as the original.\n"
-                   "No additional restrictions — You may not apply legal terms or technological measures that "
-                   "legally restrict others from doing anything the license permits.")
-
-    legal_notice = {
-        "title": "Creative Commons Attribution 4.0 International",
-        "description": description,
-        "url": "https://creativecommons.org/licenses/by/4.0/"
-    }
+    display_legal_notices(metadata.get('legal_notices', []))
 
     # Entities
     logger.info("Phase 1: Processing charity entities")
     print("Phase 1: Processing Charity Entities")
     print("-" * 70)
-    raw_dicts = retrieve_data(folder, label="entities")
+    raw_dicts = retrieve_data(folder, metadata, label="entities")
     custom_mapping = retrieve_mapping(folder, level="entities")
-    meta_id, skip = meta_check(registry_name, source_url)
+    meta_id, skip = create_registry(metadata)
 
     # Upload Data
     static_amendment = {
-        "legalNotices": [legal_notice],
         "registryName": registry_name,
         "registryID": meta_id
     }
@@ -221,9 +199,9 @@ def run_everything(folder=""):
     print(f"\n{'='*70}")
     print("Phase 2: Processing Charity Filings (Annual Reports)")
     print("-" * 70)
-    raw_dicts = retrieve_data(folder, label="filings")
+    raw_dicts = retrieve_data(folder, metadata, label="filings")
     custom_mapping = retrieve_mapping(folder, level="filings")
-    meta_id, skip = meta_check(registry_name, source_url, collection="filings")
+    meta_id, skip = create_registry(metadata, collection="filings")
 
     logger.info(f"Retrieved {len(raw_dicts):,} filing records")
     print(f"  Retrieved {len(raw_dicts):,} filing records\n")

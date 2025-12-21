@@ -554,6 +554,113 @@ def retrieve_mapping(folder="", level=None):
     return mapping
 
 
+def load_registry_metadata(folder=""):
+    """Load registry metadata from metadata.json file.
+
+    Args:
+        folder (str): Directory containing metadata.json. Defaults to current directory.
+
+    Returns:
+        dict: Registry metadata including name, source_url, api endpoints, headers, and legal_notices.
+    """
+    metadata_path = f"{folder}metadata.json"
+    logger.info(f"Loading registry metadata from: {metadata_path}")
+    with open(metadata_path, "r") as m:
+        metadata = json.load(m)
+    return metadata
+
+
+def create_registry(metadata, collection="organizations"):
+    """Create or update a registry with full metadata including legal notices.
+
+    Creates a new registry entry if one doesn't exist, or updates an existing one.
+
+    Args:
+        metadata (dict): Registry metadata containing:
+            - name (str): Registry name (required)
+            - source_url (str): Data source URL (required)
+            - legal_notices (list): Array of legal notice objects (optional)
+        collection (str): Collection to check for old records. Defaults to "organizations".
+
+    Returns:
+        tuple: A tuple containing:
+            - registry_id (ObjectId): MongoDB ObjectId of the registry metadata
+            - decision (str or None): User's deletion decision ('y', 'n', 's', 'i', or None)
+
+    Raises:
+        Exception: If multiple registries with the same name exist (database integrity error).
+    """
+    registry_name = metadata['name']
+    source_url = metadata['source_url']
+    legal_notices = metadata.get('legal_notices', [])
+
+    preexisting_registries = mongo_regeindary[meta].count_documents({"name": registry_name})
+
+    if preexisting_registries == 0:
+        logger.info(f"Registry '{registry_name}' not found - creating new entry with legal notices")
+        result = mongo_regeindary[meta].insert_one({
+            "name": registry_name,
+            "source": source_url,
+            "legalNotices": legal_notices
+        })
+        logger.info(f"Created new registry metadata with ID: {result.inserted_id}")
+        return result.inserted_id, None
+    elif preexisting_registries == 1:
+        logger.info(f"Registry '{registry_name}' found - updating legal notices if changed")
+        existing = mongo_regeindary[meta].find_one({"name": registry_name})
+
+        # Update legal notices if they've changed
+        if existing.get('legalNotices') != legal_notices:
+            mongo_regeindary[meta].update_one(
+                {"_id": existing['_id']},
+                {"$set": {"legalNotices": legal_notices}}
+            )
+            logger.info("Updated legal notices in registry metadata")
+
+        decision = delete_old_records(existing['_id'], collection)
+        return existing['_id'], decision
+    elif preexisting_registries >= 2:
+        logger.error(f"Database integrity error: Found {preexisting_registries} registries with name '{registry_name}'")
+        raise Exception(f"Database integrity error: Found {preexisting_registries} registries with name '{registry_name}'. Expected 0 or 1.")
+    else:
+        logger.error(f"Unexpected database state: Registry count for '{registry_name}' is {preexisting_registries}")
+        raise Exception(f"Unexpected database state: Registry count for '{registry_name}' is {preexisting_registries}. This should not be possible.")
+
+
+def get_registry_legal_notices(registry_id):
+    """Retrieve legal notices for a registry.
+
+    Useful for Nipwiss or other consumers that need to access legal notices
+    stored at the registry level.
+
+    Args:
+        registry_id: MongoDB ObjectId of the registry.
+
+    Returns:
+        list: Array of legal notice objects, or empty list if none.
+    """
+    registry = mongo_regeindary[meta].find_one({"_id": registry_id})
+    return registry.get('legalNotices', []) if registry else []
+
+
+def display_legal_notices(legal_notices):
+    """Display legal notices to the user in a formatted way.
+
+    Args:
+        legal_notices (list): Array of legal notice objects with 'title' and optionally 'description'.
+    """
+    if not legal_notices:
+        return
+
+    for notice in legal_notices:
+        title = notice.get('title', 'Legal Notice')
+        print(f"⚠️  LEGAL NOTICE - {title}")
+        print(f"{'-'*70}")
+        if 'url' in notice:
+            print(f"See: {notice['url']}")
+        print(f"{'-'*70}\n")
+
+
 def list_registries():
     """Retrieve all registries from the metadata collection.
 

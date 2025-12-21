@@ -1,0 +1,25 @@
+{
+  "name": "United States - Internal Revenue Service - Exempt Organizations Business Master File Extract",
+  "source_url": "https://www.irs.gov/charities-non-profits/exempt-organizations-business-master-file-extract-eo-bmf",
+  "filings_source_url": "https://www.irs.gov/charities-non-profits/form-990-series-downloads",
+  "api_endpoints": {
+    "entities": {
+      "url_template": "https://www.irs.gov/pub/irs-soi/eo{i}.csv",
+      "regions": [1, 2, 3, 4]
+    },
+    "filings": {
+      "url": "https://www.irs.gov/charities-non-profits/form-990-series-downloads"
+    }
+  },
+  "headers": {
+    "user-agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0"
+  },
+  "collections": ["organizations", "filings"],
+  "legal_notices": [
+    {
+      "title": "Open Data Commons - Database Contents License (DbCL) v1.0",
+      "description": "Database Contents License (DbCL)\n\nThe Licensor and You agree as follows:\n\n1.0 Definitions of Capitalised Words\nThe definitions of the Open Database License (ODbL) 1.0 are incorporated by reference into the Database Contents License.\n\n2.0 Rights granted and Conditions of Use\n2.1 Rights granted. The Licensor grants to You a worldwide, royalty-free, non-exclusive, perpetual, irrevocable copyright license to do any act that is restricted by copyright over anything within the Contents, whether in the original medium or any other. These rights explicitly include commercial use, and do not exclude any field of endeavour. These rights include, without limitation, the right to sublicense the work.\n\n2.2 Conditions of Use. You must comply with the ODbL.\n\n2.3 Relationship to Databases and ODbL. This license does not cover any Database Rights, Database copyright, or contract over the Contents as part of the Database. Please see the ODbL covering the Database for more details about Your rights and obligations.\n\n2.4 Non-assertion of copyright over facts. The Licensor takes the position that factual information is not covered by copyright. The DbCL grants you permission for any information having copyright contained in the Contents.\n\n3.0 Warranties, disclaimer, and limitation of liability\n3.1 The Contents are licensed by the Licensor \"as is\" and without any warranty of any kind, either express or implied, whether of title, of accuracy, of the presence of absence of errors, of fitness for purpose, or otherwise. Some jurisdictions do not allow the exclusion of implied warranties, so this exclusion may not apply to You.\n\n3.2 Subject to any liability that may not be excluded or limited by law, the Licensor is not liable for, and expressly excludes, all liability for loss or damage however and whenever caused to anyone by any use under this License, whether by You or by anyone else, and whether caused by any fault on the part of the Licensor or not. This exclusion of liability includes, but is not limited to, any special, incidental, consequential, punitive, or exemplary damages. This exclusion applies even if the Licensor has been advised of the possibility of such damages.\n\n3.3 If liability may not be excluded by law, it is limited to actual and direct financial loss to the extent it is caused by proved negligence on the part of the Licensor.",
+      "url": "https://opendatacommons.org/licenses/dbcl/1-0/"
+    }
+  ]
+}
