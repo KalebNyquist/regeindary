@@ -24,6 +24,8 @@ print("\n0. Creating indexes for fast queries...")
 start = datetime.now()
 orgs.create_index([("registryID", pymongo.ASCENDING)])
 orgs.create_index([("registryID", pymongo.ASCENDING), ("entityId", pymongo.ASCENDING)])
+orgs.create_index([("registryName", pymongo.ASCENDING)])
+orgs.create_index([("registryName", pymongo.ASCENDING), ("entityId", pymongo.ASCENDING)])
 elapsed = (datetime.now() - start).total_seconds()
 print(f"   ✔ Indexes created/verified in {elapsed:.2f}s")
 
