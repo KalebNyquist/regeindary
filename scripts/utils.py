@@ -97,6 +97,26 @@ meta = collections_map['registries']
 orgs = collections_map['organizations']
 filings = collections_map['filings']
 
+# Index Configuration
+# Defines all indexes for the database with their uniqueness constraints.
+# Structure: collection_name -> list of (fields, unique) tuples
+INDEX_CONFIG = {
+    'organizations': [
+        (['registryID', 'entityIndex'], True),   # Primary unique constraint
+        (['registryID', 'entityId'], False),     # Lookup by public ID (not unique due to subsidiaries)
+        (['registryID'], False),                 # Basic registry filtering
+    ],
+    'filings': [
+        (['registryID', 'filingIndex'], True),   # Primary unique constraint
+        (['registryID', 'entityId'], False),     # Find filings for entity
+        (['entityId_mongo'], False),             # Traverse to matched organization
+        (['registryID'], False),                 # Basic registry filtering
+    ],
+    'registries': [
+        (['name'], True),                        # One registry per name
+    ],
+}
+
 
 def check_for_cache(folder="", label="", suffix="csv"):
     """Check if a cached data file exists and prompt user whether to use it.
@@ -279,10 +299,9 @@ def preview_new_records(records, mapping, static, collection='organizations', un
     print(f"\nAnalyzing new data...")
     print(f"  ✔ Found {len(records):,} records in source data")
 
-    # Create indexes for fast duplicate detection
-    logger.debug("Creating indexes for duplicate detection")
-    mongo_regeindary[collections_map[collection]].create_index([("registryID", pymongo.ASCENDING)])
-    mongo_regeindary[collections_map[collection]].create_index([("registryID", pymongo.ASCENDING), (unique_field, pymongo.ASCENDING)])
+    # Ensure indexes for fast duplicate detection
+    logger.debug("Ensuring indexes for duplicate detection")
+    ensure_indexes(collections=[collection], verbose=False)
 
     # Get all existing unique field values for this registry (with index hint for speed)
     existing_count = mongo_regeindary[collections_map[collection]].count_documents(
@@ -815,8 +834,129 @@ def keyword_match_assist(select=None):
         print(y)
 
 
+def ensure_indexes(collections=None, verbose=True):
+    """Ensure all required indexes exist for optimal query performance.
+
+    Uses the INDEX_CONFIG to create indexes if they don't already exist.
+    MongoDB's create_index() is idempotent - it won't recreate existing indexes.
+
+    Args:
+        collections (list, optional): List of collection names to index.
+            If None, indexes all collections in INDEX_CONFIG.
+            Valid values: 'organizations', 'filings', 'registries'.
+        verbose (bool): If True, prints progress messages. Defaults to True.
+
+    Returns:
+        dict: Dictionary mapping collection names to lists of created/verified index names.
+    """
+    global mongo_regeindary, collections_map
+
+    if collections is None:
+        collections = list(INDEX_CONFIG.keys())
+
+    results = {}
+
+    for collection_name in collections:
+        if collection_name not in INDEX_CONFIG:
+            logger.warning(f"Unknown collection '{collection_name}' - skipping")
+            continue
+
+        collection = mongo_regeindary[collections_map[collection_name]]
+        results[collection_name] = []
+
+        if verbose:
+            logger.info(f"Ensuring indexes for '{collection_name}' collection")
+
+        for fields, unique in INDEX_CONFIG[collection_name]:
+            index_spec = [(field, pymongo.ASCENDING) for field in fields]
+            try:
+                index_name = collection.create_index(index_spec, unique=unique)
+                results[collection_name].append(index_name)
+                if verbose:
+                    unique_label = " (unique)" if unique else ""
+                    logger.debug(f"  ✔ Index '{index_name}'{unique_label}")
+            except pymongo.errors.DuplicateKeyError as e:
+                logger.error(f"  ✖ Cannot create unique index on {fields}: duplicate values exist")
+                raise ValueError(
+                    f"Cannot create unique index on {collection_name}.{fields}: "
+                    f"duplicate values exist in the collection. "
+                    f"Clean up duplicates before enabling unique constraint."
+                ) from e
+
+    if verbose:
+        total_indexes = sum(len(v) for v in results.values())
+        logger.info(f"Ensured {total_indexes} indexes across {len(results)} collections")
+
+    return results
+
+
+def show_index_info(collection_name=None):
+    """Display index details for debugging and development.
+
+    Shows all indexes on the specified collection(s) including their fields,
+    uniqueness constraints, and size information when available.
+
+    Args:
+        collection_name (str, optional): Name of collection to inspect.
+            If None, shows indexes for all collections.
+    """
+    global mongo_regeindary, collections_map
+
+    if collection_name:
+        collections_to_show = [collection_name]
+    else:
+        collections_to_show = list(collections_map.keys())
+
+    print("\n" + "=" * 70)
+    print("INDEX INFORMATION".center(70))
+    print("=" * 70)
+
+    for coll_name in collections_to_show:
+        if coll_name not in collections_map:
+            print(f"\n⚠ Unknown collection: {coll_name}")
+            continue
+
+        collection = mongo_regeindary[collections_map[coll_name]]
+        indexes = list(collection.list_indexes())
+
+        print(f"\n📁 {coll_name} ({len(indexes)} indexes)")
+        print("-" * 50)
+
+        for idx in indexes:
+            name = idx.get('name', 'unnamed')
+            keys = idx.get('key', {})
+            unique = idx.get('unique', False)
+
+            # Format key fields
+            key_str = ', '.join(f"{k}" for k in keys.keys())
+
+            # Build status indicators
+            indicators = []
+            if unique:
+                indicators.append("unique")
+            if name == "_id_":
+                indicators.append("default")
+
+            indicator_str = f" ({', '.join(indicators)})" if indicators else ""
+
+            print(f"  • {name}: [{key_str}]{indicator_str}")
+
+    # Show expected vs actual comparison
+    print("\n" + "-" * 50)
+    print("Expected indexes from INDEX_CONFIG:")
+    for coll_name, index_specs in INDEX_CONFIG.items():
+        print(f"\n  {coll_name}:")
+        for fields, unique in index_specs:
+            unique_label = " [unique]" if unique else ""
+            print(f"    • ({', '.join(fields)}){unique_label}")
+
+    print("\n" + "=" * 70)
+
+
 def index_check(collection, identifiers):
     """Create a compound index on specified fields if it doesn't exist.
+
+    DEPRECATED: Use ensure_indexes() instead for centralized index management.
 
     Args:
         collection (Collection): MongoDB collection object.
@@ -825,6 +965,7 @@ def index_check(collection, identifiers):
     Returns:
         str: Name of the created or existing index.
     """
+    logger.warning("index_check() is deprecated - use ensure_indexes() instead")
     desired_index = [(k, pymongo.ASCENDING) for k in identifiers]
     result = collection.create_index(desired_index)
     return result
@@ -935,14 +1076,8 @@ def run_all_match_filings(batch_size=False):
                                    filings. Defaults to False.
     """
 
-    # - [ ] Turn into a Loop
-    logger.info("Creating indexes for optimal matching performance")
-    logger.debug(f"Index #1: organizations(registryID, entityIndex) - {datetime.now()}")
-    index_check(mongo_regeindary[orgs], ['registryID', 'entityIndex'])
-    logger.debug(f"Index #2: filings(entityId_mongo) - {datetime.now()}")
-    index_check(mongo_regeindary[filings], ['entityId_mongo'])
-    logger.debug(f"Index #3: organizations(registryID, entityId) - {datetime.now()}")
-    index_check(mongo_regeindary[orgs], ['registryID', 'entityId'])
+    logger.info("Ensuring indexes for optimal matching performance")
+    ensure_indexes(collections=['organizations', 'filings'], verbose=True)
 
     unmatched_identifier = {"entityId_mongo": {"$exists": False}}
     matched_identifier = {"entityId_mongo": {"$exists": True}}
