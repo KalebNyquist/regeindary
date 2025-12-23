@@ -16,6 +16,9 @@ from pprint import pp
 import random
 import sys
 import logging
+from typing import Any
+
+from bson import ObjectId
 
 # Configure logging
 logging.basicConfig(
@@ -119,7 +122,7 @@ INDEX_CONFIG = {
 }
 
 
-def check_for_cache(folder="", label="", suffix="csv"):
+def check_for_cache(folder: str = "", label: str = "", suffix: str = "csv") -> bool:
     """Check if a cached data file exists and prompt user whether to use it.
 
     Args:
@@ -197,7 +200,13 @@ def delete_old_records(registry_id, collection='organizations'):
 
 from datetime import datetime
 
-def send_all_to_mongodb(records, mapping, static, collection='organizations', chunk_size=5000):
+def send_all_to_mongodb(
+        records: list[dict],
+        mapping: dict[str, str],
+        static: dict[str, Any],
+        collection: str = 'organizations',
+        chunk_size: int = 5000
+) -> dict[int, ObjectId]:
     """Upload multiple records to MongoDB using batch insertion with progress tracking.
 
     Optimized to use insert_many() for batch insertion instead of looping insert_one().
@@ -607,7 +616,11 @@ def upsert_all_to_mongodb(records, mapping, static, collection='organizations', 
     }
 
 
-def meta_check(registry_name, source_url, collection="organizations"):
+def meta_check(
+        registry_name: str,
+        source_url: str,
+        collection: str = "organizations"
+) -> tuple[ObjectId, str | int | None]:
     """Check if registry exists in metadata collection, create if needed, and manage old records.
 
     Args:
@@ -646,7 +659,7 @@ def meta_check(registry_name, source_url, collection="organizations"):
         raise Exception(f"Unexpected database state: Registry count for '{registry_name}' is {preexisting_registries}. This should not be possible.")
 
 
-def retrieve_mapping(folder="", level=None):
+def retrieve_mapping(folder: str = "", level: str | None =None) -> dict[str,str]:
     """Load field mapping from mapping.json file.
 
     Args:
@@ -664,7 +677,7 @@ def retrieve_mapping(folder="", level=None):
     return mapping
 
 
-def load_registry_metadata(folder=""):
+def load_registry_metadata(folder: str = "") -> dict[str,Any]:
     """Load registry metadata from metadata.json file.
 
     Args:
@@ -680,7 +693,10 @@ def load_registry_metadata(folder=""):
     return metadata
 
 
-def create_registry(metadata, collection="organizations"):
+def create_registry(
+        metadata: dict[str, Any],
+        collection: str ="organizations"
+) -> tuple[ObjectId, str | int | None]:
     """Create or update a registry with full metadata including legal notices.
 
     Creates a new registry entry if one doesn't exist, or updates an existing one.
