@@ -96,6 +96,7 @@ mongo_regeindary, collections_map = get_mongo_dbs()
 meta = collections_map['registries']
 orgs = collections_map['organizations']
 filings = collections_map['filings']
+cache = dict()
 
 # Index Configuration
 # Defines all indexes for the database with their uniqueness constraints.
@@ -194,32 +195,41 @@ def delete_old_records(registry_id, collection='organizations'):
         return option
     return record_count
 
+from datetime import datetime
 
-def send_all_to_mongodb(records, mapping, static, collection='organizations'):
+def send_all_to_mongodb(records, mapping, static, collection='organizations', chunk_size=5000):
     """Upload multiple records to MongoDB using batch insertion with progress tracking.
 
     Optimized to use insert_many() for batch insertion instead of looping insert_one().
     Pre-processes all records to apply mapping transformations, then inserts all documents
-    in a single batch operation for better performance.
+    in across multiple batch operations (depending on size) for better performance.
 
     Args:
         records (list): List of record dictionaries to upload.
         mapping (dict): Field mapping dictionary (origin field -> target field).
         static (dict): Static fields to add to every record (e.g., registryID, registryName).
         collection (str): Target collection name. Defaults to 'organizations'.
+        chunk_size (int): Number of documents per batch insert. Defaults to 5000.
 
     Returns:
         dict: Dictionary mapping record index (1-based) to MongoDB ObjectIds.
+    # TODO: https://claude.ai/chat/8faaaba3-2795-4f58-8c8d-3362570bf16f
     """
     global mongo_regeindary, collections_map
+    from pymongo.errors import BulkWriteError
 
-    # Pre-process all records to apply mapping transformations
+    # Ensure unique indexes exist BEFORE insertion (makes re-runs safe)
+    logger.info(f"Ensuring indexes for '{collection}' collection")
+    ensure_indexes(collections=[collection], verbose=False)
+    logger.info("Indexes ensured")
+
+    # Phase 1: Transform records
     upload_documents = []
     logger.info(f"Transforming {len(records):,} records for MongoDB insertion")
     for i, record in enumerate(records, start=1):
-        if (i % 100 == 0) or (i == len(records)):
+        if (i % 50000 == 0) or (i == len(records)):
             percentage = "%.2f" % (100 * i/len(records))
-            print(f"\r  Transformed {i:,}/{len(records):,} ({percentage}%) records", end="")
+            logger.info(f"\r  Transformed {i:,}/{len(records):,} ({percentage}%) records")
 
         # Apply mapping transformation (same logic as send_to_mongodb)
         upload_dict = static.copy()
@@ -229,15 +239,96 @@ def send_all_to_mongodb(records, mapping, static, collection='organizations'):
         upload_dict.update({"Original Data": record})
         upload_documents.append(upload_dict)
 
-    print()  # New line after transformation progress
+        # Ensure unique index fields exist (fallback for registries that don't map them)
+        # TODO: add to glossary for filingIndex and entity Index
+        if collection == 'organizations':
+            if 'entityIndex' not in upload_dict and 'entityId' in upload_dict:
+                upload_dict['entityIndex'] = upload_dict['entityId']
+            elif 'entityIndex' not in upload_dict and 'entityId' not in upload_dict:
+                upload_dict['entityIndex'] = i
+                upload_dict['entityId'] = i
+        elif collection == 'filings':
+            if 'filingIndex' not in upload_dict and 'filingId' in upload_dict:
+                upload_dict['filingIndex'] = upload_dict['filingId']
+            elif 'filingIndex' not in upload_dict and 'filingId' not in upload_dict:
+                upload_dict['filingIndex'] = i
+                upload_dict['filingId'] = i
 
-    # Batch insert all documents at once
-    logger.info(f"Inserting {len(upload_documents):,} documents to '{collection}' collection")
-    result = mongo_regeindary[collections_map[collection]].insert_many(
-        upload_documents,
-        ordered=False  # Continue on error, more resilient for large batches
-    )
-    logger.info(f"✔ Successfully inserted {len(result.inserted_ids):,} documents")
+        upload_dict.update({"Original Data": record})
+        upload_documents.append(upload_dict)
+
+    # Phase 2: Chunked insertion with progress
+    total_docs = len(upload_documents)
+    total_chunks = (total_docs + chunk_size - 1) // chunk_size
+
+    total_inserted = 0
+    total_duplicates = 0
+
+    logger.info(f"Inserting {total_docs:,} documents in {total_chunks:,} batches of up to {chunk_size:,} documents each")
+    start_time = datetime.now()
+
+    for chunk_num in range(total_chunks):
+        chunk_start = chunk_num * chunk_size
+        chunk_end = min(chunk_start + chunk_size, total_docs)
+        chunk = upload_documents[chunk_start:chunk_end]
+
+        try:
+            result = mongo_regeindary[collections_map[collection]].insert_many(
+                chunk,
+                ordered=False
+            )
+            # all_inserted_ids.extend(result.inserted_ids)
+            total_inserted += len(result.inserted_ids)
+        except BulkWriteError as bwe:
+            # Extract successful inserts and duplicate errors
+            write_errors = bwe.details.get('writeErrors', [])
+            duplicate_errors = [e for e in write_errors if e.get('code') == 11000]
+            other_errors = [e for e in write_errors if e.get('code') != 11000]
+
+            # Count successes: chunk size minus errors
+            chunk_inserted = len(chunk) - len(write_errors)
+            total_inserted += chunk_inserted
+            total_duplicates += len(duplicate_errors)
+
+            # Re-raise if there are non-duplicate errors
+            if other_errors:
+                logger.error(f"Non-duplicate errors encountered during batch insert: len({other_errors})")
+                raise
+
+        # Progress update
+        docs_processed = chunk_end
+        percentage = 100 * docs_processed / total_docs
+        elapsed = (datetime.now() - start_time).total_seconds()
+
+        if elapsed > 0 and docs_processed > 0:
+            rate = docs_processed / elapsed
+            remaining = (total_docs - docs_processed) / rate
+            eta = f"~{remaining:.0f}s remaining"
+        else:
+            eta = ""
+
+        status = f"Inserted {total_inserted:,} / {total_docs:,} ({percentage:.2f}%) documents"
+        if total_duplicates > 0:
+            status += f" - skipped {total_duplicates:,} duplicates"
+        # TODO: determine while total_inserted = total_duplicates for England (& other?) registries
+
+        logger.info(f"{status} - ETA {eta}")
+
+    logger.info(f"✔ Successfully inserted {total_inserted:,} documents")
+
+    return {
+        'inserted' : total_inserted,
+        'duplicates' : total_duplicates,
+        'total' : total_docs
+    }
+
+    # # Batch insert all documents at once
+    # logger.info(f"Inserting {len(upload_documents):,} documents to '{collection}' collection")
+    # result = mongo_regeindary[collections_map[collection]].insert_many(
+    #     upload_documents,
+    #     ordered=False  # Continue on error, more resilient for large batches
+    # )
+    # logger.info(f"✔ Successfully inserted {len(result.inserted_ids):,} documents")
 
     # Return results in compatible format
     results = {i+1: result.inserted_ids[i] for i in range(len(result.inserted_ids))}
@@ -1010,15 +1101,17 @@ def create_organization_from_orphan_filing(filing):
     return result.inserted_id
 
 
-def match_filing(filing, matching_field='entityId', auto_create_from_orphan=True):
-    """Link a filing to its corresponding organization by updating the filing's entityId_mongo field.
+def match_filing(filing, matching_field=None, create_from_orphan="skip"):
+    """
+    Link a filing to its corresponding organization by updating the filing's entityId_mongo field.
 
     Args:
         filing (dict): Filing document to match.
         matching_field (str): Field name to use for matching. Defaults to 'entityId'.
                              Note: Use 'entityIndex' for England/Wales for better matching.
-        auto_create_from_orphan (bool): If True, automatically create organization from orphan filing.
-                                        If False, prompt user for decision. Defaults to True.
+        create_from_orphan (str): If 'auto', automatically create organization from orphan filing.
+                                        If 'prompt', prompt user for decision.
+                                        If 'skip', skip.
 
     Returns:
         UpdateResult: MongoDB update result object.
@@ -1027,48 +1120,95 @@ def match_filing(filing, matching_field='entityId', auto_create_from_orphan=True
         Exception: If multiple organizations match (database integrity error) or if user declines
                   to create organization from orphan filing.
     """
-    # - [ ] note UK/Wales works better when matching_field='entityIndex'
+    # TODO: determine if this cache technique is consistently faster ( 🡪 keep), sometimes faster ( 🡪 parameter), or never/trivial ( 🡪 remove)
+    global cache
+
+    # TODO: make matching_field on entityIndex more dynamic
+    if matching_field is not None:
+        pass
+    else:
+        matching_field = 'entityId'
+
     entity_id = filing[matching_field]
     registry_id = filing['registryID']  # - [ ] registryID -> registryId
 
+    matching_dict = {}
+
     # org_identifier = {"registryID": registry_id, matching_field: entity_id}
     # the below line of code fixes an import error with USA Data, the above line of code is ideal if import error fixed
-    org_identifier = {"registryID": registry_id, matching_field: str(entity_id).rjust(9, '0')}
+    if filing['registryName'] == "United States - Internal Revenue Service - Exempt Organizations Business Master File Extract":
+       org_identifier = {"registryID": registry_id, matching_field: str(entity_id).rjust(9, '0')}
+    elif filing['registryName'] == "England and Wales - Charity Commission Register of Charities":
+        org_identifier = {"registryID": registry_id, matching_field: entity_id, "$or": [{"subsidiaryIndex": {"$exists": False }}, {"subsidiaryIndex": 0}]}
+        # TODO: unclear if subsidiaryIndex should be 0 or 1 or something else
+    else:
+        org_identifier = {"registryID": registry_id, matching_field: entity_id}
 
-    matched_orgs = mongo_regeindary[orgs].find(org_identifier)
-    matched_orgs = [matched_org for matched_org in matched_orgs]
+    #logger.info(f"{org_identifier} 🡪 ??? 🡪 ???")
+    #logger.info(f"{org_identifier} 🡪 {str(org_identifier.items())} 🡪 ???")
+    cache_result = cache.get(str(org_identifier.items()), None)
+    #logger.info(f"{org_identifier} 🡪 {str(org_identifier.items())} 🡪 {cache_result}")
+    if cache_result:
+        logger.info(f"Cache hit for {entity_id} in {registry_id}: {cache_result}")
+        entity_id_mongo = cache_result
+    elif not cache_result:
+        entity_id_mongo = None
+        logger.info(f"Cache miss for {entity_id} in {registry_id}")
+        matched_orgs = mongo_regeindary[orgs].find(org_identifier)
+        matched_orgs = [matched_org for matched_org in matched_orgs]
 
-    if len(matched_orgs) == 0:
-        if auto_create_from_orphan:
-            logger.warning(f"No matching organization found for filing with {matching_field}='{entity_id}' - creating orphan organization")
-            entity_id_mongo = create_organization_from_orphan_filing(filing)
-        else:
-            logger.warning(f"No matching organization found for filing with {matching_field}='{entity_id}'")
-            print("⚠️  No matching organization found for filing (see below).")
-            pp(filing)
-            manual_decision = input("Create Organization from Orphan Filing? (y/n) ")
-            if manual_decision == "y":
+        if len(matched_orgs) == 0:
+            if create_from_orphan == "auto":
+                logger.warning(f"No matching organization found for filing with {matching_field}='{entity_id}' - creating orphan organization")
                 entity_id_mongo = create_organization_from_orphan_filing(filing)
-            else:
-                raise Exception(f"No matching organization found for filing with {matching_field}='{entity_id}' in registry '{registry_id}'. User declined to create orphan organization.")
-    elif len(matched_orgs) >= 2:
-        logger.error(f"Database integrity error: Found {len(matched_orgs)} organizations matching {matching_field}='{entity_id}'")
-        raise Exception(f"Database integrity error: Found {len(matched_orgs)} organizations matching {matching_field}='{entity_id}' in registry '{registry_id}'. Expected 0 or 1. Filing ID: {filing.get('_id', 'unknown')}")
-    elif len(matched_orgs) == 1:
-        [matched_org] = matched_orgs
-        entity_id_mongo = matched_org['_id']
+            elif create_from_orphan == "prompt":
+                logger.warning(f"No matching organization found for filing with {matching_field}='{entity_id}'")
+                print("⚠️  No matching organization found for filing (see below).")
+                pp(filing)
+                manual_decision = input("Create Organization from Orphan Filing? (y/n) ")
+                if manual_decision == "y":
+                    entity_id_mongo = create_organization_from_orphan_filing(filing)
+                else:
+                    logger.warning(f"No matching organization found for filing with {matching_field}='{entity_id}' in registry '{registry_id}'. User declined to create orphan organization.")
+                    return None
+            elif create_from_orphan == "skip":
+                logger.warning(f"No matching organization found for filing with {matching_field}='{entity_id}' in registry '{registry_id}'. User declined to create orphan organization.")
+                return None
+        elif len(matched_orgs) >= 2:
+            logger.error(f"Database integrity error: Found {len(matched_orgs)} organizations matching {matching_field}='{entity_id}'")
+            raise Exception(f"Database integrity error: Found {len(matched_orgs)} organizations matching {matching_field}='{entity_id}' in registry '{registry_id}'. Expected 0 or 1. Filing ID: {filing.get('_id', 'unknown')}")
+        elif len(matched_orgs) == 1:
+            [matched_org] = matched_orgs
+            entity_id_mongo = matched_org['_id']
+            logger.info(f"Matched filing {filing['_id']} with existing organization {entity_id_mongo} using {matching_field}='{entity_id}'")
 
-    result = mongo_regeindary[filings].update_one(
+        if entity_id_mongo:
+            if len(cache) >= 10000:
+                cache = dict()
+            cache.update({str(org_identifier.items()) : entity_id_mongo})
+
+    # TODO: refactor these from update_one to update many in optimal size batches (estimated to be between 500-50000)
+    # Add linked organization record id to filing record
+    filing_result = mongo_regeindary[filings].update_one(
         {"_id": filing['_id']},
         {"$set": {"entityId_mongo": entity_id_mongo}}
     )
-    return result
+
+    # Add linked filing record id to list of filings in organization record
+    org_result = mongo_regeindary[orgs].update_one(
+        {"_id": entity_id_mongo},
+        {"$addToSet": {"filings": filing['_id']}}
+    )
+
+
+
+    return filing_result
 
 
 def run_all_match_filings(batch_size=False):
     """Match all unmatched filings to their corresponding organizations with progress tracking.
 
-    Creates necessary indexes for performance, then iteratively processes unmatched filings.
+    Creates the necessary indexes for performance, then iteratively processes unmatched filings.
     Displays progress updates every 5 minutes. Supports graceful interruption via Ctrl+C.
 
     Args:
@@ -1101,10 +1241,12 @@ def run_all_match_filings(batch_size=False):
     reference_unmatched = n_unmatched
     reference_time = datetime.now()
 
+    skips = 0
+
     try:
         while n_unmatched > 0:
             print(f"\r  {n_unmatched:,} unmatched filings remaining".ljust(50), end="")
-            filing = mongo_regeindary[filings].find_one(unmatched_identifier)
+            filing = mongo_regeindary[filings].find_one(unmatched_identifier, skip=skips, sort=[("_id", pymongo.ASCENDING)])
 
             if not filing:
                 print("")
@@ -1112,7 +1254,9 @@ def run_all_match_filings(batch_size=False):
                 print(f"\r  No unmatched filings found.".ljust(50))
                 break
 
-            match_filing(filing)
+            result = match_filing(filing)
+            if not result:
+                skips += 1
             n_unmatched -= 1
 
             time_difference = datetime.now() - reference_time
