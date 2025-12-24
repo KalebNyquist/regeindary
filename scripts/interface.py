@@ -7,6 +7,7 @@ import sys
 import os
 import utils
 import logging
+from filing_matcher import FilingMatcher
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +130,12 @@ def menu_select():
             utils.keyword_match_assist()
         elif selection == "4":
             logger.info("User selected: Match Filings with Entities")
+            print("\\nMatching Method:")
+            print("  [1] Bulk operations (default, recommended)")
+            print("  [2] Aggregation pipeline")
+            method_choice = input("Select method (1/2, default=1): ").strip()
+
+
             batch_size = input("How many matches to make? (Use `!` for all) ")
             if batch_size == "!":
                 logger.info("Matching all unmatched filings")
