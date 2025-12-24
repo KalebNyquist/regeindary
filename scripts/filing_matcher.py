@@ -195,7 +195,7 @@ class FilingMatcher:
         start_time = datetime.now()
 
         # Ensure indexes exist for performance
-        ensure_indexes(collections=['organizations', 'filings'], verbose=False)
+        ensure_indexes(collections=['organizations', 'filings'], verbose=True)
 
         if method == "aggregation":
             stats = self._match_via_aggregation(limit)
@@ -245,7 +245,8 @@ class FilingMatcher:
         stats = MatchingStats(method="bulk")
 
         # Count unmatched filings
-        unmatched_filter = {"entityId_mongo": {"$exists": False}}
+        logger.info("Counting unmatched filings...")
+        unmatched_filter = {"entityId_mongo": None}
         total_unmatched = self._filings.count_documents(unmatched_filter)
 
         if limit:
@@ -305,6 +306,7 @@ class FilingMatcher:
                 # TODO: add a few more stats
                 logger.debug(rate_message)
                 print(f"\n  {rate_message}")
+                stats.duration_seconds = (datetime.now() - self.start_time).total_seconds()
                 print(stats)
                 last_progress_time = datetime.now()
                 last_progress_count = processed
@@ -769,6 +771,13 @@ if __name__ == "__main__":
 
     from utils import mongo_regeindary, collections_map
 
+    # TODO: Remove when no longer needed
+    # print("Migration script...")
+    # result = mongo_regeindary[collections_map['filings']].update_many(
+    #     {"entityId_mongo": {"$exists": False}},
+    #     {"$set": {"entityId_mongo": None}})
+    # print(f"Updated {result.modified_count:,} filings to have entityId_mongo: null")
+
     print("FilingMatcher Test Run")
     print("=" * 50)
 
@@ -779,12 +788,12 @@ if __name__ == "__main__":
         create_orphans=False  # Don't create orgs in test
     )
 
-    # Test with small batch
-    print("\nTesting bulk method with 100000 filings...")
-    stats = matcher.match_all(method="bulk", limit=100000)
-    print(stats)
-
-    # Test with small batch
+    # # Test with small batch
+    # print("\nTesting bulk method with 100000 filings...")
+    # stats = matcher.match_all(method="bulk", limit=1000)
+    # print(stats)
+    #
+    # # Test with small batch
     # print("\nTesting aggregation method with 1000 filings...")
     # stats = matcher.match_all(method="aggregation", limit=1000)
     # print(stats)

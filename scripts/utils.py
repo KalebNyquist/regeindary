@@ -106,18 +106,22 @@ cache = dict()
 # Structure: collection_name -> list of (fields, unique) tuples
 INDEX_CONFIG = {
     'organizations': [
-        (['registryID', 'entityIndex'], True),   # Primary unique constraint
-        (['registryID', 'entityId'], False),     # Lookup by public ID (not unique due to subsidiaries)
-        (['registryID'], False),                 # Basic registry filtering
+        (['registryID', 'entityIndex'], True, None),   # Primary unique constraint
+        (['registryID', 'entityId'], False, None),     # Lookup by public ID (not unique due to subsidiaries)
+        (['registryID'], False, None),                 # Basic registry filtering
     ],
     'filings': [
-        (['registryID', 'filingIndex'], True),   # Primary unique constraint
-        (['registryID', 'entityId'], False),     # Find filings for entity
-        (['entityId_mongo'], False),             # Traverse to matched organization
-        (['registryID'], False),                 # Basic registry filtering
+        (['registryID', 'filingIndex'], True, None),   # Primary unique constraint
+        (['registryID', 'entityId'], False, None),     # Find filings for entity
+        (['entityId_mongo'], False, None),             # Traverse to matched organization
+        (['registryID'], False, None),                 # Basic registry filtering
+        (['registryID', 'entityId_mongo'], False, None)
+        # (['registryID', '_id'], False, {"entityId_mongo": None}),  # May aide filing-org matching
+        # (['entityId_mongo'], False, {"entityId_mongo": None})        # May aide filing-org matching
+
     ],
     'registries': [
-        (['name'], True),                        # One registry per name
+        (['name'], True, None),                        # One registry per name
     ],
 }
 
@@ -238,7 +242,7 @@ def send_all_to_mongodb(
     for i, record in enumerate(records, start=1):
         if (i % 50000 == 0) or (i == len(records)):
             percentage = "%.2f" % (100 * i/len(records))
-            logger.info(f"\r  Transformed {i:,}/{len(records):,} ({percentage}%) records")
+            logger.info(f"\r  Transformed {i:,}/{len(records):,} ({percentage}%) records for {collection}")
 
         # Apply mapping transformation (same logic as send_to_mongodb)
         upload_dict = static.copy()
@@ -260,6 +264,10 @@ def send_all_to_mongodb(
             elif 'filingIndex' not in upload_dict and 'filingId' not in upload_dict:
                 upload_dict['filingIndex'] = i
                 upload_dict['filingId'] = i
+
+        # Create null values to aid indexing and avoid partial_index "$not" / "$exists: false" issue
+        if collection == 'filings':
+            upload_dict['entityId_mongo'] = None
 
         upload_dict.update({"Original Data": record})
         upload_documents.append(upload_dict)
@@ -285,7 +293,12 @@ def send_all_to_mongodb(
                 ordered=False
             )
             # all_inserted_ids.extend(result.inserted_ids)
+
+            # Count successes
             total_inserted += len(result.inserted_ids)
+
+            # Logger message
+            logger.info(f"  Inserted {len(result.inserted_ids):,} documents into {collection}")
         except BulkWriteError as bwe:
             # Extract successful inserts and duplicate errors
             write_errors = bwe.details.get('writeErrors', [])
@@ -296,6 +309,9 @@ def send_all_to_mongodb(
             chunk_inserted = len(chunk) - len(write_errors)
             total_inserted += chunk_inserted
             total_duplicates += len(duplicate_errors)
+
+            # Logger message
+            logger.info(f"  Inserted {chunk_inserted:,} documents into {collection} - {len(duplicate_errors):,} duplicates")
 
             # Re-raise if there are non-duplicate errors
             if other_errors:
@@ -314,7 +330,7 @@ def send_all_to_mongodb(
         else:
             eta = ""
 
-        status = f"Inserted {total_inserted:,} / {total_docs:,} ({percentage:.2f}%) documents"
+        status = f"Inserted {total_inserted:,} / {total_docs:,} ({percentage:.2f}%) documents into {collection}"
         if total_duplicates > 0:
             status += f" - skipped {total_duplicates:,} duplicates"
         # TODO: determine while total_inserted = total_duplicates for England (& other?) registries
@@ -939,6 +955,35 @@ def keyword_match_assist(select=None):
         print(y)
 
 
+def _has_unsupported_partial_filter(partial_filter):
+    """Check if partial filter contains unsupported expressions like $exists: false.
+
+    MongoDB partial indexes don't support $not operator, which includes $exists: false.
+
+    Args:
+        partial_filter (dict): The partialFilterExpression to validate
+
+    Returns:
+        bool: True if the filter contains unsupported expressions
+    """
+    if not isinstance(partial_filter, dict):
+        return False
+
+    for key, value in partial_filter.items():
+        if isinstance(value, dict):
+            # Check for $exists: false (not supported)
+            if '$exists' in value and value['$exists'] is False:
+                return True
+            # Check for explicit $not operator (not supported)
+            if '$not' in value:
+                return True
+            # Recursively check nested conditions
+            if _has_unsupported_partial_filter(value):
+                return True
+
+    return False
+
+
 def ensure_indexes(collections=None, verbose=True):
     """Ensure all required indexes exist for optimal query performance.
 
@@ -972,20 +1017,51 @@ def ensure_indexes(collections=None, verbose=True):
         if verbose:
             logger.info(f"Ensuring indexes for '{collection_name}' collection")
 
-        for fields, unique in INDEX_CONFIG[collection_name]:
-            index_spec = [(field, pymongo.ASCENDING) for field in fields]
+        for index_spec in INDEX_CONFIG[collection_name]:
+            # 🡨 Support both old (fields, unique) and new (fields, unique, partial) formats
+            if len(index_spec) == 2:
+                fields, unique = index_spec
+                partial_filter = None
+            else:
+                fields, unique, partial_filter = index_spec
+
+            index_keys = [(field, pymongo.ASCENDING) for field in fields]
+
+            # 🡨 Build kwargs for create_index
+            kwargs = {}
+            if fields != ['_id']:   # Don't specify 'unique' for _id indexes (it's always unique)
+                kwargs['unique'] = unique
+            if partial_filter is not None:
+                # Validate partial filter for unsupported expressions
+                if _has_unsupported_partial_filter(partial_filter):
+                    logger.warning(
+                        f"Skipping partial filter for index on {fields}: "
+                        f"$exists: false is not supported in MongoDB partial indexes. "
+                        f"Creating index without partial filter instead."
+                    )
+                    # Create index without the problematic partial filter
+                else:
+                    kwargs["partialFilterExpression"] = partial_filter
+                    # 🡨 Generate descriptive name for partial indexes
+                    kwargs["name"] = f"idx_{'_'.join(fields)}_partial"
+
             try:
-                index_name = collection.create_index(index_spec, unique=unique)
+                index_name = collection.create_index(index_keys, **kwargs)
                 results[collection_name].append(index_name)
                 if verbose:
+                    partial_label = " (partial)" if partial_filter else ""
                     unique_label = " (unique)" if unique else ""
-                    logger.debug(f"  ✔ Index '{index_name}'{unique_label}")
+                    logger.debug(f"  ✔ Index '{index_name}'{unique_label}{partial_label}")
+            except pymongo.errors.OperationFailure as e:
+                if "already exists with different options" in str(e):
+                    logger.warning(f"  ⚠ Index on {fields} already exists with different options - skipping")
+                    continue
+                raise
             except pymongo.errors.DuplicateKeyError as e:
                 logger.error(f"  ✖ Cannot create unique index on {fields}: duplicate values exist")
                 raise ValueError(
                     f"Cannot create unique index on {collection_name}.{fields}: "
-                    f"duplicate values exist in the collection. "
-                    f"Clean up duplicates before enabling unique constraint."
+                    f"duplicate values exist in the collection."
                 ) from e
 
     if verbose:
