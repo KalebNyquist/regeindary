@@ -245,8 +245,6 @@ def send_all_to_mongodb(
         for m in mapping.keys():
             if m in record.keys():
                 upload_dict.update({mapping[m]: record[m]})
-        upload_dict.update({"Original Data": record})
-        upload_documents.append(upload_dict)
 
         # Ensure unique index fields exist (fallback for registries that don't map them)
         # TODO: add to glossary for filingIndex and entity Index
@@ -1058,24 +1056,6 @@ def show_index_info(collection_name=None):
             print(f"    • ({', '.join(fields)}){unique_label}")
 
     print("\n" + "=" * 70)
-
-
-def index_check(collection, identifiers):
-    """Create a compound index on specified fields if it doesn't exist.
-
-    DEPRECATED: Use ensure_indexes() instead for centralized index management.
-
-    Args:
-        collection (Collection): MongoDB collection object.
-        identifiers (list): List of field names to include in compound index.
-
-    Returns:
-        str: Name of the created or existing index.
-    """
-    logger.warning("index_check() is deprecated - use ensure_indexes() instead")
-    desired_index = [(k, pymongo.ASCENDING) for k in identifiers]
-    result = collection.create_index(desired_index)
-    return result
 
 
 def create_organization_from_orphan_filing(filing):
