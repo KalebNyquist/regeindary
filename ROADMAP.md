@@ -50,10 +50,25 @@ One-time checks after the 2025-12 → 2026-11 break. Collapse or delete this sec
 
 ### Housekeeping
 
-- [ ] **Refresh CLAUDE.md** — remove the stale "Always push to `claude/claude-md-…`" branch instruction; update
-      registry count (Ireland), codebase size (~3,700 lines), and document `FilingMatcher` as the matching path.
-      Update the competitive landscape table (add GiveRadar; note Candid's AI repositioning) and revisit
-      "Avoid duplicating CharityBase's UK work".
+- [ ] **Refresh CLAUDE.md** — currently 1,044 lines vs. the documented <200-line target
+      ([memory docs](https://code.claude.com/docs/en/memory.md)). Rule of thumb: *always true* → CLAUDE.md;
+      *when touching X* → path-scoped rule / subdirectory CLAUDE.md; *when doing Y* → skill; *must happen* → hook/settings.
+  - [ ] Run `/context all` and `/doctor prompt-audit` to see what loads and what's flagged
+  - [ ] Delete stale/dangerous content: `claude/…` branch instruction, "Last Updated" stats,
+        line/registry counts, function inventories that duplicate the code
+  - [ ] Decide: keep the Nipwiss contract as condensed always-loaded rules (~30 lines) +
+        full detail in a path-scoped rule (`.claude/rules/nipwiss-contract.md`, paths: `schemas/**`, `scripts/utils.py`)
+  - [ ] Move strategy + Shadow Registry vision to `docs/STRATEGY.md`; refresh competitor
+        table there (add GiveRadar; note Candid's AI repositioning; revisit "Avoid duplicating CharityBase's UK work")
+  - [ ] Move registry quirks into per-country `scripts/<Country>/CLAUDE.md` (load on demand)
+  - [ ] Convert workflows ("add a registry", incremental update) into skills under `.claude/skills/`
+  - [ ] Decide what must be *enforced* rather than requested (e.g. never commit `config.toml`)
+        → hook / settings / .gitignore, not prose
+  - [ ] Decide: CLAUDE.md vs AGENTS.md (AGENTS.md if you'll use other AI coding tools)
+  - [ ] Decide: what goes in CLAUDE.local.md (personal, e.g. "dev DB is regeindary_dev")
+  - [ ] Document `FilingMatcher` as the matching path; update registry count (Ireland); point to
+        ROADMAP.md for current priorities
+  - [ ] Verify: new session, `/context all`, then ask Claude a Nipwiss-contract question to confirm the rules still load
 - [ ] **GitHub hygiene** — triage `gh issue list`, `gh pr list`, and stale remote `claude/*` branches
       (`git branch -r`).
 - [ ] **Define the first milestone** — e.g. matcher WIP committed + `pyproject.toml` (#1) + utils dual-import fix
