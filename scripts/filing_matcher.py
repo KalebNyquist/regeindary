@@ -99,6 +99,18 @@ def _us_ein_transform(entity_id) -> str:
     return str(entity_id).rjust(9, '0')
 
 
+def _id_key(entity_id) -> str:
+    """Normalize an entity ID to one canonical string for cache/lookup bookkeeping.
+
+    MongoDB matches 20000011 (int) and 20000011.0 (double) as equal, but str() of them differs.
+    """
+    if type(entity_id) is float:
+        if entity_id.is_integer():
+            entity_id = int(entity_id)
+
+    return str(entity_id)
+
+
 REGISTRY_CONFIGS = {
     "United States - Internal Revenue Service - Exempt Organizations Business Master File Extract":
         RegistryConfig(
@@ -159,6 +171,7 @@ class FilingMatcher:
         self.collections = collections
         self.batch_size = batch_size
         self.create_orphans = create_orphans
+        self.start_time = datetime.now()
 
         # Cache for org lookups - reduces repeated queries
         #   Key: (registry_id, entity_id, [...other identifying datapoints]) tuple
@@ -423,6 +436,7 @@ class FilingMatcher:
 
             # Collect entity IDs that need lookup (not in cache)
             ids_to_lookup: dict[str, list[dict]] = {}  # entity_id -> [filings]
+            raw_ids = set()
 
             for filing in registry_filings:
                 entity_id = filing.get(config.matching_field)
@@ -435,32 +449,34 @@ class FilingMatcher:
                     entity_id = config.transform_id(entity_id)
 
                 # Check cache first
-                cache_key = (registry_id, str(entity_id))
+                cache_key = (registry_id, _id_key(entity_id))
                 if cache_key in self._cache:
                     matches[filing['_id']] = self._cache[cache_key]
                     self._cache_hits += 1
                 else:
                     self._cache_misses += 1
-                    if entity_id not in ids_to_lookup:
-                        ids_to_lookup[entity_id] = []
-                    ids_to_lookup[entity_id].append(filing)
+                    str_key = _id_key(entity_id)
+                    if str_key not in ids_to_lookup:
+                        ids_to_lookup[str_key] = []
+                    ids_to_lookup[str_key].append(filing)
+                    raw_ids.add(entity_id)
 
             if not ids_to_lookup:
                 continue
 
             # Batch query for all uncached entity IDs
-            entity_ids_values = list(ids_to_lookup.keys())
+            entity_ids_values = list(raw_ids)
             query = {
                 "registryID": registry_id,
                 "$or": [
                     {config.matching_field: {"$in": entity_ids_values}},
-                    {config.matching_field: {"$in": [str(v) for v in entity_ids_values]}}
+                    {config.matching_field: {"$in": [_id_key(v) for v in entity_ids_values]}}
             ]
             }
 
             # Add subsidiary filter if configured
             if config.subsidiary_filter:
-                query.update(config.subsidiary_filter)
+                query = {"$and": [query, config.subsidiary_filter]}
 
             # Execute batch lookup
             cursor = self._orgs.find(
@@ -471,11 +487,11 @@ class FilingMatcher:
             # Process results
             found_ids = set()
             for org in cursor:
-                org_entity_id = str(org[config.matching_field])
+                org_entity_id = _id_key(org[config.matching_field])
                 found_ids.add(org_entity_id)
 
                 # Cache the result
-                cache_key = (registry_id, str(org_entity_id))
+                cache_key = (registry_id, org_entity_id)
                 self._cache[cache_key] = org['_id']
 
                 # Limit cache size to prevent memory issues

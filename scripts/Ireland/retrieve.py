@@ -52,6 +52,13 @@ def retrieve_data(folder, metadata, label):
         response_df = pd.read_csv(f"{folder}/cache_{label}.csv", encoding='utf-8',
                                   encoding_errors='replace', low_memory=False, header=1)
 
+    # Data cleaning -- remove blank rows following data
+    before_cropping = len(response_df)
+    response_df = response_df[response_df[response_df.columns[0]].isna() == False]
+    after_cropping = len(response_df)
+    if before_cropping != after_cropping:
+        logger.info(f"Cropped out empty rows on {response_df.columns[0]} — reduced from {before_cropping} to {after_cropping}")
+
     logger.info(f"Converting {len(response_df):,} records to dictionary format")
     response_dicts = response_df.to_dict(orient="records")
 

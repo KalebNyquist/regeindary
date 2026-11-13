@@ -1291,8 +1291,9 @@ def run_all_match_filings(batch_size=False):
     logger.info("Ensuring indexes for optimal matching performance")
     ensure_indexes(collections=['organizations', 'filings'], verbose=True)
 
-    unmatched_identifier = {"entityId_mongo": {"$exists": False}}
-    matched_identifier = {"entityId_mongo": {"$exists": True}}
+    # TODO identical to filing_matcher.FilingMatcher._match_via_bulk.unmatched_filter ... consider importing/exporting for consistency
+    unmatched_identifier = {"entityId_mongo": None}
+    matched_identifier = {"entityId_mongo": {"$ne": None}}
 
     if batch_size:
         logger.info(f"Starting batch matching operation for {batch_size:,} filings")

@@ -7,7 +7,6 @@ import sys
 import os
 import utils
 import logging
-from filing_matcher import FilingMatcher
 
 logger = logging.getLogger(__name__)
 
@@ -129,25 +128,44 @@ def menu_select():
             logger.info("User selected: Keyword Match Assist")
             utils.keyword_match_assist()
         elif selection == "4":
+            from filing_matcher import FilingMatcher
             logger.info("User selected: Match Filings with Entities")
+            # Method Selection
             print("\\nMatching Method:")
             print("  [1] Bulk operations (default, recommended)")
             print("  [2] Aggregation pipeline")
             method_choice = input("Select method (1/2, default=1): ").strip()
+            method = "aggregation" if method_choice == "2" else "bulk"
 
+            # Orphan handling
+            print("\\nOrphan filings (filings with no matching organization):")
+            print("  [1] Skip orphans (default)")
+            print("  [2] Create organizations from orphan filings")
+            orphan_choice = input("Select option (1/2, default=1): ").strip()
+
+            create_orphans = orphan_choice == "2"
 
             batch_size = input("How many matches to make? (Use `!` for all) ")
+
+            matcher = FilingMatcher(
+                utils.mongo_regeindary,
+                utils.collections_map,
+                batch_size=1000,
+                create_orphans=create_orphans)
+
             if batch_size == "!":
-                logger.info("Matching all unmatched filings")
-                utils.run_all_match_filings()
+                logger.info(f"Matching all unmatched filings using {method} method")
+                stats = matcher.match_all(method=method)
             else:
                 try:
                     batch_count = int(batch_size)
-                    logger.info(f"Matching {batch_count:,} filings")
-                    utils.run_all_match_filings(batch_count)
+                    logger.info(f"Matching {batch_count:,} filings using {method} method")
+                    stats = matcher.match_all(method=method, limit=batch_count)
                 except ValueError:
                     logger.warning(f"Invalid batch size entered: {batch_size}")
                     print(f"⚠️  '{batch_size}' is not a valid integer. Cannot execute.")
+                    continue  # Skips to next menu iteration
+            print(f"{stats}")
         elif selection == "5":
             logger.info("User selected: Display Random Entity")
             utils.get_random_entity(display="No Original", hard_limit=5000)
@@ -160,6 +178,8 @@ def menu_select():
         else:
             logger.warning(f"Invalid menu selection: {selection}")
             print("⚠️  Invalid selection.")
+
+
         print("\n", end="")
 
 
