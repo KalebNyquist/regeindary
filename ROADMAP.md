@@ -90,7 +90,7 @@ Started 2026-11-11 as a "warm-up" before the time-sensitive items above.
   - ⚠️ **pandas 3.x and python-dateutil 4.x are major-version jumps** from what the code was written against —
     first suspects if anything breaks (fallback: `uv add "pandas<3"`).
   - Run `!` commands from Claude Code in Git Bash — use forward slashes (`.venv/Scripts/python`).
-- [ ] **Step 1: Test the `FilingMatcher` menu flow** (interface option 4) against `regeindary_dev`
+- [x] **Step 1: Test the `FilingMatcher` menu flow** (interface option 4) against `regeindary_dev`
   - [x] 1a. Confirm MongoDB tools (2026-11-12): installed Database Tools 100.20.1 via
         `winget install MongoDB.DatabaseTools`; added `C:\Program Files\MongoDB\Tools\100\bin` to user PATH
         (installer doesn't); restart PyCharm to pick it up. Server ping `{ ok: 1 }`.
@@ -104,10 +104,19 @@ Started 2026-11-11 as a "warm-up" before the time-sensitive items above.
         Ireland org IDs stored as `double` → `str()` gave `"20000011.0"` (added `_id_key()` normalizer).
         Results: 0/1000 → 488/1000 → 1000/1000 matched; 1000/1000 links spot-checked correct.
         Open: `limit` < `batch_size` still processes a full batch (1000).
-  - [ ] 1e. Repeat with aggregation method on a small limit — expect 0 matched: aggregation filters
+  - [x] 1e. Repeat with aggregation method on a small limit — expect 0 matched: aggregation filters
         `{"$exists": False}` and ignores `null`, unlike bulk (`None`). Unify the "unmatched" filter first.
         Also: its `$toString` in `$lookup` defeats the index; it doesn't write org `filings` arrays.
-  - [ ] 1f. Commit the WIP (excluding `scripts/config.toml`)
+        Done 2026-11-13 (`e4e1a1b`): shared `UNMATCHED_FILTER = {"entityId_mongo": None}`. Limit 100 → exactly
+        100 Ireland matched; 1,100/1,100 Ireland + 1,000/1,000 E&W sampled links correct. Ireland's double IDs
+        match without `_id_key()` because Mongo's `$toString(20000011.0)` gives `"20000011"`.
+  - [x] 1f. Commit the WIP (excluding `scripts/config.toml`)
+  - Followups found during 1e
+    - [ ] Piped stdout crashes on emoji (cp1252); workaround `PYTHONUTF8=1`. Fix: `sys.stdout.reconfigure(encoding="utf-8")`
+    - [ ] interface.py option 4: `try` wraps `match_all()`, so `except ValueError` swallows real errors and catches `UnicodeEncodeError` etc.
+    - [ ] Menu prompts print a literal `\n` (`"\\n..."` in `interface.py`)
+    - [ ] "Orphans skipped" in aggregation stats actually means "still unmatched"
+    - [ ] "Falling back to bulk for: United States…" message printed even with no US filings
   - Note: the number entered at "How many matches to make?" is used as `limit`; `batch_size` is hard-coded to 1000.
 - [ ] **Step 2: Finish Ireland support** — findings from 2026-11-11 inspection of the cached CSVs (Effective Date
       9 Nov 2025):
