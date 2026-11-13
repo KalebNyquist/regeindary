@@ -133,6 +133,9 @@ REGISTRY_CONFIGS = {
 
 DEFAULT_CONFIG = RegistryConfig(name="default", matching_field="entityId")
 
+# A filing is "unmatched" when entityId_mongo is null OR existing
+# In MongoDB (expressed as pymongo), {"field": None} matches both cases; {"$exists": False} matches only missing.
+UNMATCHED_FILTER = {"entityId_mongo": None}
 
 # =========================================================================
 # Main FilingMatcher Class
@@ -259,7 +262,7 @@ class FilingMatcher:
 
         # Count unmatched filings
         logger.info("Counting unmatched filings...")
-        unmatched_filter = {"entityId_mongo": None}
+        unmatched_filter = UNMATCHED_FILTER
         total_unmatched = self._filings.count_documents(unmatched_filter)
 
         if limit:
@@ -553,7 +556,7 @@ class FilingMatcher:
         all_registry_names = set(
             doc['_id']
             for doc in self._filings.aggregate([
-                {"$match": {"entityId_mongo": {"$exists": False}}},
+                {"$match": UNMATCHED_FILTER},
                 {"$group": {"_id": "$registryName"}}
             ])
         )
@@ -577,7 +580,7 @@ class FilingMatcher:
 
             # Filter to only unmatched filings from complex registries
             complex_filter = {
-                "entityId_mongo": {"$exists": False},
+                **UNMATCHED_FILTER,
                 "registryName": {"$in": complex_registries}
             }
 
@@ -614,10 +617,10 @@ class FilingMatcher:
             # Interpretation note:
             #  - $match is a MongoDB command
             #  - "unmatched" in Regeindary jargon for filings without entityId_mongo
-            #  - and so, we are "$match"-ing on filings that are "unmatched" (i.e. no entityId_mongo)
+            #  - and so, we are "$match"-ing on filings that are "unmatched" (i.e. entityId_mongo null or missing)
             {
                 "$match": {
-                    "entityId_mongo": {"$exists": False},
+                    **UNMATCHED_FILTER,
                     "registryName": registry_name
                 }
             }
@@ -695,13 +698,13 @@ class FilingMatcher:
 
         try:
             # $merge doesn't return results, so we need to count before to compare with after
-            before_count = self._filings.count_documents({"entityId_mongo": {"$exists": False}, "registryName": registry_name})
+            before_count = self._filings.count_documents({**UNMATCHED_FILTER, "registryName": registry_name})
 
             # Run aggregation
             list(self._filings.aggregate(pipeline, allowDiskUse=True))
 
             # After count
-            after_count = self._filings.count_documents({"entityId_mongo": {"$exists": False}, "registryName": registry_name})
+            after_count = self._filings.count_documents({**UNMATCHED_FILTER, "registryName": registry_name})
 
             matched = before_count - after_count
             stats.matched += matched
