@@ -28,9 +28,10 @@ One-time checks after the 2025-12 → 2026-11 break. Collapse or delete this sec
 - [ ] **Preserve existing raw downloads** — copy current caches (including the 2024-12 IRS files) somewhere safe
       before any refresh. `check_for_cache()` redownloads overwrite the cache, and old source files may not be
       retrievable again.
-- [ ] **Back up MongoDB** — `mongodump --db regeindary` and `mongodump --db regeindary_dev` before running
-      the new matcher (it writes `entityId_mongo` across hundreds of thousands of filings). Also confirm what
-      `regeindary_dev` actually contains.
+- [x] **Back up MongoDB** — done 2026-11-12: `mongodump --gzip` of all databases to
+      `~/mongo-backups/2026-11-12/` (3.1 GB; `regeindary` 8.7 GB on disk → 2.6 GB, 10,444,790 filings).
+      Restore: `mongorestore --gzip --nsInclude "<db>.*" <dir>`. The server also holds `regeindary_alt` and the
+      `NIPWISS3-*` databases (see Evaluate). Still to confirm what `regeindary_dev` contains (Step 1c).
 - [ ] **Stop using the `[y] Delete all old records` import option** — it destroys history. Use `[i]`
       (incremental) until change tracking (#5) exists.
 
@@ -46,7 +47,11 @@ One-time checks after the 2025-12 → 2026-11 break. Collapse or delete this sec
 - [ ] **Watch for dependency drift** — the fresh uv venv pulls latest versions (notably pandas, pymongo).
       Suspect version changes before code when something breaks; see priority #1 for pinning.
 - [ ] **Check Nipwiss** — review what Nipwiss currently queries/expects before changing anything that touches the
-      shared MongoDB contract.
+      shared MongoDB contract. Note: Nipwiss *stores* its own data (`NIPWISS3-cnc` ~2 GB, `-cnc2`, `-test`) on the
+      same `mongod` server, so server-level changes (upgrades, data-dir moves) affect both projects.
+- [ ] **Evaluate `regeindary_alt`** (358 MB, 3 collections) — recalled as a development branch with an improved
+      data structure, meant to eventually replace `regeindary`. Diff its schema against `regeindary` and the
+      Nipwiss contract; decide whether to adopt, mine for ideas, or drop. Relevant to #5 (change tracking).
 
 ### Housekeeping
 
@@ -86,12 +91,22 @@ Started 2026-11-11 as a "warm-up" before the time-sensitive items above.
     first suspects if anything breaks (fallback: `uv add "pandas<3"`).
   - Run `!` commands from Claude Code in Git Bash — use forward slashes (`.venv/Scripts/python`).
 - [ ] **Step 1: Test the `FilingMatcher` menu flow** (interface option 4) against `regeindary_dev`
-  - [ ] 1a. Confirm MongoDB tools: `mongodump --version` and `mongosh --quiet --eval "db.adminCommand('ping')"`
-        (Database Tools are a separate install from the server)
-  - [ ] 1b. `mongodump --db regeindary_dev` (safety net)
-  - [ ] 1c. Option 1 (status check) to see what `regeindary_dev` contains
-  - [ ] 1d. Option 4: bulk method, skip orphans, limit 100 → inspect printed stats
-  - [ ] 1e. Repeat with aggregation method on a small limit
+  - [x] 1a. Confirm MongoDB tools (2026-11-12): installed Database Tools 100.20.1 via
+        `winget install MongoDB.DatabaseTools`; added `C:\Program Files\MongoDB\Tools\100\bin` to user PATH
+        (installer doesn't); restart PyCharm to pick it up. Server ping `{ ok: 1 }`.
+  - [x] 1b. Back up (2026-11-12) — all databases, see "Back up MongoDB" above
+  - [x] 1c. Status check (2026-11-12): Australia 63,776 orgs (no `download_completion`), E&W 389,646 orgs /
+        1,205,927 filings, Ireland 14,339 / 80,485, NZ 44,085; no US. 80,973 filings had `entityId_mongo: null`
+        (= unmatched; `$exists` counts them as matched). One org has no known `registryID` (511,847 vs 511,846).
+  - [x] 1d. Bulk, skip orphans, limit 100 (2026-11-12) — found and fixed 3 bugs in `_resolve_org_matches()`:
+        int keys vs str lookups (all fresh lookups → false orphans; "create orphans" would duplicate orgs);
+        E&W `subsidiary_filter` `$or` overwrote the ID `$or` via `dict.update` (fetched all ~390k orgs);
+        Ireland org IDs stored as `double` → `str()` gave `"20000011.0"` (added `_id_key()` normalizer).
+        Results: 0/1000 → 488/1000 → 1000/1000 matched; 1000/1000 links spot-checked correct.
+        Open: `limit` < `batch_size` still processes a full batch (1000).
+  - [ ] 1e. Repeat with aggregation method on a small limit — expect 0 matched: aggregation filters
+        `{"$exists": False}` and ignores `null`, unlike bulk (`None`). Unify the "unmatched" filter first.
+        Also: its `$toString` in `$lookup` defeats the index; it doesn't write org `filings` arrays.
   - [ ] 1f. Commit the WIP (excluding `scripts/config.toml`)
   - Note: the number entered at "How many matches to make?" is used as `limit`; `batch_size` is hard-coded to 1000.
 - [ ] **Step 2: Finish Ireland support** — findings from 2026-11-11 inspection of the cached CSVs (Effective Date
@@ -104,6 +119,8 @@ Started 2026-11-11 as a "warm-up" before the time-sensitive items above.
         `\x80`. Try `utf-8` → `cp1252` → `latin-1`.
   - [ ] Fix pandas-download path: it saves without the title row, but the reader uses `header=1` → real header
         is skipped.
+  - [ ] **IDs violate the Nipwiss contract (strings):** Ireland org `entityId` is `double` (likely pandas NaN →
+        float64 from blank rows), E&W is `int`. Normalize at import (reuse `filing_matcher._id_key`), audit others.
   - [ ] **Dates and numbers violate the Nipwiss contract:** periods are `DD/MM/YYYY` (mapping wrongly says
         MM/DD), money is text like `€24,393,381,000`.
   - [ ] Decide: Ireland-only cleaning vs. a generic transform in `utils.py`. **Cross-registry finding:** the
