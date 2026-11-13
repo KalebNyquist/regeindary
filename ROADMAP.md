@@ -76,16 +76,48 @@ One-time checks after the 2025-12 → 2026-11 break. Collapse or delete this sec
 
 ## In-flight work to finish first
 
-- [ ] Test the `FilingMatcher` menu flow (interface option 4) against `regeindary_dev`, then commit the WIP
-      (excluding `scripts/config.toml`).
+Started 2026-11-11 as a "warm-up" before the time-sensitive items above.
+
+- [x] **Step 0: Rebuild the dev environment with uv** (commit `2db2147`, 2026-11-11)
+  - Old `.venv` was on CPython 3.16.0a1 (alpha, uv auto-picked newest) with no packages; deleted and rebuilt.
+  - Pinned Python 3.14 (`.python-version`), `uv init --bare`, `uv add pymongo pandas requests beautifulsoup4 tqdm`.
+  - Resolved: Python 3.14.10, pandas 3.1.1, numpy 2.5.4, pymongo 4.19.0, python-dateutil 4.0.0.
+  - ⚠️ **pandas 3.x and python-dateutil 4.x are major-version jumps** from what the code was written against —
+    first suspects if anything breaks (fallback: `uv add "pandas<3"`).
+  - Run `!` commands from Claude Code in Git Bash — use forward slashes (`.venv/Scripts/python`).
+- [ ] **Step 1: Test the `FilingMatcher` menu flow** (interface option 4) against `regeindary_dev`
+  - [ ] 1a. Confirm MongoDB tools: `mongodump --version` and `mongosh --quiet --eval "db.adminCommand('ping')"`
+        (Database Tools are a separate install from the server)
+  - [ ] 1b. `mongodump --db regeindary_dev` (safety net)
+  - [ ] 1c. Option 1 (status check) to see what `regeindary_dev` contains
+  - [ ] 1d. Option 4: bulk method, skip orphans, limit 100 → inspect printed stats
+  - [ ] 1e. Repeat with aggregation method on a small limit
+  - [ ] 1f. Commit the WIP (excluding `scripts/config.toml`)
   - Note: the number entered at "How many matches to make?" is used as `limit`; `batch_size` is hard-coded to 1000.
-- [ ] Finish Ireland support and update CLAUDE.md / README.md to list 5 registries.
+- [ ] **Step 2: Finish Ireland support** — findings from 2026-11-11 inspection of the cached CSVs (Effective Date
+      9 Nov 2025):
+  - [ ] Back up `scripts/Ireland/cache_*.csv` before any re-download (they are a historical snapshot)
+  - [ ] Fix `mapping.json` drift: `Registration Date`, `Website`, `Date Filed`, `Charity Number` don't exist in
+        the CSVs; filing headers contain embedded newlines (`"Period\nStart Date"`), so `Period Start/End Date`
+        never match. Only `Gross Income` / `Gross Expenditure` / entity number & name match today.
+  - [ ] Fix encoding order in `retrieve.py`: `latin-1` never fails, so `cp1252` is unreachable and `€` becomes
+        `\x80`. Try `utf-8` → `cp1252` → `latin-1`.
+  - [ ] Fix pandas-download path: it saves without the title row, but the reader uses `header=1` → real header
+        is skipped.
+  - [ ] **Dates and numbers violate the Nipwiss contract:** periods are `DD/MM/YYYY` (mapping wrongly says
+        MM/DD), money is text like `€24,393,381,000`.
+  - [ ] Decide: Ireland-only cleaning vs. a generic transform in `utils.py`. **Cross-registry finding:** the
+        `"format"` key in every `mapping.json` (Australia, Ireland, NewZealand, UnitedStates) is never read by
+        any code — dates are stored raw everywhere. Likely needs a generic fix + audit of other registries.
+  - [ ] Re-import to `regeindary_dev`; verify with options 3 (keyword match) and 5 (random entity)
+  - [ ] Update CLAUDE.md / README.md to list 5 registries
 
 ## Architectural priorities
 
-- [ ] **1. Package with `pyproject.toml` (uv)**
-  No dependency manifest exists; deps (pymongo, pandas, requests, beautifulsoup4, tqdm, zipfile-deflate64) are
-  only described in CLAUDE.md. `uv init` + `uv add ...` makes the environment reproducible.
+- [x] **1. Package with `pyproject.toml` (uv)** — done 2026-11-11 (`2db2147`), see Step 0 above.
+  - [ ] Remaining: US module still imports `zipfile-deflate64` (no wheels since cp310; needs C build tools on
+        Windows). Replace with the maintained `inflate64` package when returning to US work.
+  - [ ] Optional: loosen `requires-python` from `>=3.14` to `>=3.11` if other machines (e.g. Nipwiss) need it.
 
 - [ ] **2. Fix the dual import of `utils`** *(latent bug)*
   `scripts/interface.py` does `import utils`; every `scripts/*/retrieve.py` does `from scripts.utils import *`.
