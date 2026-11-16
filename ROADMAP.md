@@ -27,9 +27,15 @@ One-time checks after the 2025-12 → 2026-11 break. Collapse or delete this sec
 
 - [ ] **Preserve existing raw downloads** — copy current caches (including the 2024-12 IRS files) somewhere safe
       before any refresh. `check_for_cache()` redownloads overwrite the cache, and old source files may not be
-      retrievable again.
+      retrievable again. Destination: `~/ProjectsData/regeindary-snapshots/<Country>/<YYYY-MM-DD>/` with a
+      `SHA256SUMS` per snapshot (layout and conventions in that folder's README).
+  - [x] Ireland — 2026-11-16: `Ireland/2025-11-09/` (effective date; downloaded 2025-11-15), 2 CSVs, 92 MB,
+        checksums verified against originals.
+  - [ ] United States — 2024-12 IRS BMF CSV, Form 990 index CSV, `zips_x/`, ~1.66M XMLs in `filings/`
+        (archive as one tar/zip).
+  - [ ] Australia, England & Wales, New Zealand — check whether any caches exist
 - [x] **Back up MongoDB** — done 2026-11-12: `mongodump --gzip` of all databases to
-      `~/mongo-backups/2026-11-12/` (3.1 GB; `regeindary` 8.7 GB on disk → 2.6 GB, 10,444,790 filings).
+      `~/ProjectsData/mongo-backups/2026-11-12/` (3.1 GB; `regeindary` 8.7 GB on disk → 2.6 GB, 10,444,790 filings).
       Restore: `mongorestore --gzip --nsInclude "<db>.*" <dir>`. The server also holds `regeindary_alt` and the
       `NIPWISS3-*` databases (see Evaluate). Still to confirm what `regeindary_dev` contains (Step 1c).
 - [ ] **Stop using the `[y] Delete all old records` import option** — it destroys history. Use `[i]`
@@ -120,7 +126,8 @@ Started 2026-11-11 as a "warm-up" before the time-sensitive items above.
   - Note: the number entered at "How many matches to make?" is used as `limit`; `batch_size` is hard-coded to 1000.
 - [ ] **Step 2: Finish Ireland support** — findings from 2026-11-11 inspection of the cached CSVs (Effective Date
       9 Nov 2025):
-  - [ ] Back up `scripts/Ireland/cache_*.csv` before any re-download (they are a historical snapshot)
+  - [x] Back up `scripts/Ireland/cache_*.csv` before any re-download (they are a historical snapshot) —
+        done 2026-11-16, see "Preserve existing raw downloads"
   - [ ] Fix `mapping.json` drift: `Registration Date`, `Website`, `Date Filed`, `Charity Number` don't exist in
         the CSVs; filing headers contain embedded newlines (`"Period\nStart Date"`), so `Period Start/End Date`
         never match. Only `Gross Income` / `Gross Expenditure` / entity number & name match today.
