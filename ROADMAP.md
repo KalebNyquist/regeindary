@@ -139,9 +139,27 @@ Started 2026-11-11 as a "warm-up" before the time-sensitive items above.
         float64 from blank rows), E&W is `int`. Normalize at import (reuse `filing_matcher._id_key`), audit others.
   - [ ] **Dates and numbers violate the Nipwiss contract:** periods are `DD/MM/YYYY` (mapping wrongly says
         MM/DD), money is text like `€24,393,381,000`.
-  - [ ] Decide: Ireland-only cleaning vs. a generic transform in `utils.py`. **Cross-registry finding:** the
+  - [x] Decide: Ireland-only cleaning vs. a generic transform in `utils.py`. **Cross-registry finding:** the
         `"format"` key in every `mapping.json` (Australia, Ireland, NewZealand, UnitedStates) is never read by
-        any code — dates are stored raw everywhere. Likely needs a generic fix + audit of other registries.
+        any code — dates are stored raw everywhere.
+        **Decided 2026-11-16: generic transform (Option B), rolled out in stages.**
+  - [ ] Implement the generic transform in `utils.py`:
+    - Why `format` is ignored: `retrieve_mapping()` flattens entries to `{origin: target}` (drops `format`), and
+      the field-copy loop is duplicated in 4 places (`send_all_to_mongodb`, `send_to_mongodb`, the sample view
+      in `send_new_to_mongodb`, `upsert_all_to_mongodb`). Replace all 4 with one shared `apply_mapping()`.
+    - Keep `format` without changing callers — e.g. a `dict` subclass carrying a `.formats` attribute, so
+      existing `mapping.items()` / `mapping[m]` code and the retrieve.py call sites keep working (design TBD).
+    - Transform only the mapped field; `Original Data` must stay raw (don't clean the record in place).
+    - Strict parsing: a value that doesn't match its declared format should fail loudly or be logged, never
+      guessed (e.g. 03/04 silently becoming 4 March). Handle blanks/NaN and the US `"format": "YYYY"` (a year).
+    - Money/number fields (Ireland `€24,393,381,000`) need a rule too — `format` value or schema type.
+    - Planned Learn-by-Doing: user writes the core date/number parsing.
+  - [ ] Audit every registry's `format` values against the actual data (Ireland says `MM/DD/YYYY`; data is
+        `DD/MM/YYYY`)
+  - [ ] Re-import Australia / NZ / US with the new transform **only after the "Check Nipwiss" item** — Nipwiss may
+        already parse the raw `DD/MM/YYYY` strings. Utils changes alter no stored data; only re-imports do.
+        Avoid `[i]` incremental for this: it would leave old records raw and new ones ISO (mixed formats in one
+        collection) — use a full re-import or a one-off migration.
   - [ ] Re-import to `regeindary_dev`; verify with options 3 (keyword match) and 5 (random entity)
   - [ ] Update CLAUDE.md / README.md to list 5 registries
 
